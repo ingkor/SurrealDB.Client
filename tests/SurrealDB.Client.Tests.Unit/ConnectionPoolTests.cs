@@ -149,4 +149,66 @@ public class ConnectionPoolTests
         // Assert - should throw ObjectDisposedException
         await Assert.ThrowsAsync<ObjectDisposedException>(() => pool.AcquireAsync());
     }
+
+    [Fact]
+    public async Task ConnectionPool_GetStatistics_ThreadSafe()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions { PoolSize = 10 };
+        var mockAdapter = new Mock<IProtocolAdapter>();
+        mockAdapter.Setup(a => a.IsConnected).Returns(true);
+        mockAdapter.Setup(a => a.HealthCheckAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var factory = new Func<CancellationToken, Task<IProtocolAdapter>>(ct =>
+            Task.FromResult(mockAdapter.Object));
+
+        var pool = new ConnectionPool(options, factory);
+        await pool.InitializeAsync();
+
+        var statistics = new List<PoolStatistics>();
+        var errors = new List<Exception>();
+
+        // Act - concurrent GetStatistics calls while AcquireAsync is running
+        var getStatisticsTasks = Enumerable.Range(0, 50)
+            .Select(async _ =>
+            {
+                try
+                {
+                    for (int i = 0; i < 10; i++)
+                    {
+                        var stats = pool.GetStatistics();
+                        lock (statistics)
+                        {
+                            statistics.Add(stats);
+                        }
+                        await Task.Delay(10);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lock (errors)
+                    {
+                        errors.Add(ex);
+                    }
+                }
+            });
+
+        await Task.WhenAll(getStatisticsTasks);
+
+        // Assert
+        Assert.Empty(errors); // No exceptions thrown
+        Assert.NotEmpty(statistics); // At least some statistics were collected
+
+        // Verify statistics invariants
+        foreach (var stats in statistics)
+        {
+            Assert.True(stats.TotalConnections >= 0);
+            Assert.True(stats.AvailableConnections >= 0);
+            Assert.True(stats.InUseConnections >= 0);
+            Assert.True(stats.TotalAcquisitions >= 0);
+            Assert.True(stats.TotalReleases >= 0);
+            Assert.True(stats.FailedHealthChecks >= 0);
+        }
+    }
 }

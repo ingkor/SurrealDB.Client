@@ -203,15 +203,19 @@ internal class ConnectionPool : IConnectionPool
 
     public PoolStatistics GetStatistics()
     {
-        return new PoolStatistics
+        // Lock on _allConnections to prevent concurrent modifications during enumeration
+        lock (_allConnections)
         {
-            TotalConnections = _allConnections.Count,
-            AvailableConnections = _availableConnections.Count,
-            InUseConnections = _allConnections.Count(c => c.InUse),
-            TotalAcquisitions = _totalAcquisitions,
-            TotalReleases = _totalReleases,
-            FailedHealthChecks = _failedHealthChecks
-        };
+            return new PoolStatistics
+            {
+                TotalConnections = _allConnections.Count,
+                AvailableConnections = _availableConnections.Count,
+                InUseConnections = _allConnections.Count(c => c.InUse),
+                TotalAcquisitions = Interlocked.Read(ref _totalAcquisitions),
+                TotalReleases = Interlocked.Read(ref _totalReleases),
+                FailedHealthChecks = Interlocked.Read(ref _failedHealthChecks)
+            };
+        }
     }
 
     public async ValueTask DisposeAsync()
