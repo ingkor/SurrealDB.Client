@@ -89,6 +89,12 @@ public class SurrealDbClientOptions
         if (string.IsNullOrWhiteSpace(ConnectionString))
             throw new ValidationException("ConnectionString cannot be empty.");
 
+        if (string.IsNullOrWhiteSpace(Namespace))
+            throw new ValidationException("Namespace is required and cannot be empty.");
+
+        if (string.IsNullOrWhiteSpace(Database))
+            throw new ValidationException("Database is required and cannot be empty.");
+
         if (PoolSize < 1)
             throw new ValidationException("PoolSize must be at least 1.");
 
