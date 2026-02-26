@@ -102,31 +102,40 @@ internal class ConnectionPool : IConnectionPool
                 pooledConnection = null;
             }
 
-            // Create new connection if under limit
+            // Check pool capacity before creating a new adapter
+            bool canCreate = false;
             lock (_allConnections)
             {
                 if (_allConnections.Count < _options.PoolSize)
                 {
-                    pooledConnection = new PooledConnection
-                    {
-                        Id = Guid.NewGuid(),
-                        CreatedAt = DateTime.UtcNow,
-                        LastUsedAt = DateTime.UtcNow,
-                        InUse = true,
-                        UsageCount = 1
-                    };
-
-                    _allConnections.Add(pooledConnection);
+                    canCreate = true;
                 }
             }
 
-            if (pooledConnection == null)
+            if (!canCreate)
             {
                 throw new ConnectionException("Connection pool exhausted and cannot create new connections");
             }
 
-            // Create the actual adapter
-            pooledConnection.Adapter = await _connectionFactory(cancellationToken);
+            // Create the adapter BEFORE adding to _allConnections to prevent null-adapter
+            // corruption if DisposeAsync runs concurrently between those two steps.
+            var adapter = await _connectionFactory(cancellationToken);
+
+            pooledConnection = new PooledConnection
+            {
+                Id = Guid.NewGuid(),
+                Adapter = adapter,
+                CreatedAt = DateTime.UtcNow,
+                LastUsedAt = DateTime.UtcNow,
+                InUse = true,
+                UsageCount = 1
+            };
+
+            lock (_allConnections)
+            {
+                _allConnections.Add(pooledConnection);
+            }
+
             Interlocked.Increment(ref _totalAcquisitions);
             return pooledConnection.Adapter;
         }
@@ -135,7 +144,7 @@ internal class ConnectionPool : IConnectionPool
             _acquireSemaphore.Release();
             throw new ConnectionException("Failed to acquire connection within timeout period", ex);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _acquireSemaphore.Release();
             throw;
@@ -185,19 +194,29 @@ internal class ConnectionPool : IConnectionPool
         await _disposeSemaphore.WaitAsync();
         try
         {
-            while (_availableConnections.TryTake(out var pooled))
-            {
-                await DisposeConnectionAsync(pooled);
-            }
-
-            lock (_allConnections)
-            {
-                _allConnections.Clear();
-            }
+            await ClearConnectionsAsync();
         }
         finally
         {
             _disposeSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Drains and disposes all connections. Must only be called while <c>_disposeSemaphore</c>
+    /// is already held (or during disposal before the semaphore is released) to avoid
+    /// re-entrant acquisition that would deadlock.
+    /// </summary>
+    private async Task ClearConnectionsAsync()
+    {
+        while (_availableConnections.TryTake(out var pooled))
+        {
+            await DisposeConnectionAsync(pooled);
+        }
+
+        lock (_allConnections)
+        {
+            _allConnections.Clear();
         }
     }
 
@@ -224,7 +243,9 @@ internal class ConnectionPool : IConnectionPool
         await _disposeSemaphore.WaitAsync();
         try
         {
-            await ClearAsync();
+            // Call the shared drain logic directly — NOT ClearAsync(), which would
+            // attempt to acquire _disposeSemaphore again and deadlock (non-reentrant).
+            await ClearConnectionsAsync();
         }
         finally
         {
