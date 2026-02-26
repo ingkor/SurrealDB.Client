@@ -4,6 +4,7 @@ using Authentication;
 using Connection;
 using Protocol;
 using Serialization;
+using Session;
 
 /// <summary>
 /// Main SurrealDB client implementation.
@@ -42,6 +43,23 @@ public class SurrealDbClient : ISurrealDbClient
     public SurrealDbClientOptions Options => _options;
 
     public bool IsConnected => _isConnected;
+
+    #region Sessions
+
+    /// <summary>
+    /// Creates a new session for managing entity changes with automatic change tracking.
+    /// </summary>
+    /// <returns>A new ISurrealDbSession for the unit of work pattern.</returns>
+    public ISurrealDbSession CreateSession()
+    {
+        ThrowIfDisposed();
+        if (!_isConnected)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+
+        return new SurrealDbSession(this);
+    }
+
+    #endregion
 
     #region Connection Management
 

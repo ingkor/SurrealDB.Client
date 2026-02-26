@@ -1,5 +1,7 @@
 namespace SurrealDB.Client;
 
+using Session;
+
 /// <summary>
 /// Main interface for SurrealDB client operations.
 /// </summary>
@@ -14,6 +16,16 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// Gets whether the client is currently connected.
     /// </summary>
     bool IsConnected { get; }
+
+    #region Sessions
+
+    /// <summary>
+    /// Creates a new session (Unit of Work) for managing entity changes.
+    /// </summary>
+    /// <returns>A new session for tracking and saving entity changes.</returns>
+    ISurrealDbSession CreateSession();
+
+    #endregion
 
     #region Connection Management
 
