@@ -8,6 +8,8 @@ using Protocol;
 /// </summary>
 internal class ConnectionPool : IConnectionPool
 {
+    private static readonly TimeSpan HealthCheckGracePeriod = TimeSpan.FromSeconds(30);
+
     private readonly SurrealDbClientOptions _options;
     private readonly Func<CancellationToken, Task<IProtocolAdapter>> _connectionFactory;
     private readonly ConcurrentBag<PooledConnection> _availableConnections;
@@ -18,10 +20,11 @@ internal class ConnectionPool : IConnectionPool
     private long _totalAcquisitions;
     private long _totalReleases;
     private long _failedHealthChecks;
+    private int _availableCount;
 
     public int CurrentSize => _allConnections.Count;
     public int MaxSize => _options.PoolSize;
-    public int AvailableCount => _availableConnections.Count;
+    public int AvailableCount => _availableCount;
 
     public ConnectionPool(
         SurrealDbClientOptions options,
@@ -58,6 +61,7 @@ internal class ConnectionPool : IConnectionPool
                 };
 
                 _availableConnections.Add(pooled);
+                Interlocked.Increment(ref _availableCount);
                 lock (_allConnections)
                 {
                     _allConnections.Add(pooled);
@@ -86,6 +90,20 @@ internal class ConnectionPool : IConnectionPool
             // Try to get existing connection
             while (_availableConnections.TryTake(out pooledConnection))
             {
+                Interlocked.Decrement(ref _availableCount);
+
+                // Skip health check for recently-used connections (grace period optimization)
+                var timeSinceLastUse = DateTime.UtcNow - pooledConnection.LastUsedAt;
+                if (timeSinceLastUse < HealthCheckGracePeriod)
+                {
+                    // Connection was recently used and is likely still healthy
+                    pooledConnection.InUse = true;
+                    pooledConnection.LastUsedAt = DateTime.UtcNow;
+                    pooledConnection.UsageCount++;
+                    Interlocked.Increment(ref _totalAcquisitions);
+                    return pooledConnection.Adapter;
+                }
+
                 // Check if connection is still healthy
                 if (await pooledConnection.Adapter.HealthCheckAsync(cancellationToken))
                 {
@@ -177,6 +195,7 @@ internal class ConnectionPool : IConnectionPool
         {
             // Return to pool
             _availableConnections.Add(pooledConnection);
+            Interlocked.Increment(ref _availableCount);
         }
         else
         {
@@ -222,15 +241,18 @@ internal class ConnectionPool : IConnectionPool
 
     public PoolStatistics GetStatistics()
     {
-        return new PoolStatistics
+        lock (_allConnections)
         {
-            TotalConnections = _allConnections.Count,
-            AvailableConnections = _availableConnections.Count,
-            InUseConnections = _allConnections.Count(c => c.InUse),
-            TotalAcquisitions = _totalAcquisitions,
-            TotalReleases = _totalReleases,
-            FailedHealthChecks = _failedHealthChecks
-        };
+            return new PoolStatistics
+            {
+                TotalConnections = _allConnections.Count,
+                AvailableConnections = _availableConnections.Count,
+                InUseConnections = _allConnections.Count(c => c.InUse),
+                TotalAcquisitions = Interlocked.Read(ref _totalAcquisitions),
+                TotalReleases = Interlocked.Read(ref _totalReleases),
+                FailedHealthChecks = Interlocked.Read(ref _failedHealthChecks)
+            };
+        }
     }
 
     public async ValueTask DisposeAsync()

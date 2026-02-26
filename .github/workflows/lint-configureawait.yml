@@ -1,0 +1,35 @@
+name: Lint ConfigureAwait
+
+on:
+  push:
+    paths:
+      - 'src/**/*.cs'
+  pull_request:
+    paths:
+      - 'src/**/*.cs'
+
+jobs:
+  lint-configureawait:
+    runs-on: ubuntu-latest
+    name: Ensure library code uses ConfigureAwait(false)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for await without ConfigureAwait(false)
+        run: |
+          # Check library source code for 'await' without 'ConfigureAwait'
+          # This catches missing ConfigureAwait(false) that can cause context-capture overhead
+
+          VIOLATIONS=$(grep -rn "await " src/SurrealDB.Client --include="*.cs" | \
+            grep -v "ConfigureAwait" | \
+            grep -v "^[^:]*:\s*//.*await" || true)
+
+          if [ ! -z "$VIOLATIONS" ]; then
+            echo "ERROR: Found await statements without ConfigureAwait(false):"
+            echo "$VIOLATIONS"
+            exit 1
+          else
+            echo "✓ All await statements properly use ConfigureAwait(false)"
+            exit 0
+          fi

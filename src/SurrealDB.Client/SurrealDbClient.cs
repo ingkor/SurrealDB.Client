@@ -64,6 +64,13 @@ public class SurrealDbClient : ISurrealDbClient
             // Verify connection
             await _currentConnection.ConnectAsync(cancellationToken);
 
+            // Set namespace and database context
+            await _currentConnection.SendAsync(
+                "query",
+                "/sql",
+                $"{{\"query\":\"USE NS {_options.Namespace} DB {_options.Database};\"}}",
+                cancellationToken).ConfigureAwait(false);
+
             _isConnected = true;
         }
         catch (Exception ex) when (!(ex is SurrealDbException))
