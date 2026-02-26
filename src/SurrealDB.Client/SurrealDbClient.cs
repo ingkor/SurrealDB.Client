@@ -51,6 +51,13 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
+            // Validate namespace and database are required
+            if (string.IsNullOrWhiteSpace(_options.Namespace))
+                throw new ValidationException("Namespace is required and cannot be empty.");
+
+            if (string.IsNullOrWhiteSpace(_options.Database))
+                throw new ValidationException("Database is required and cannot be empty.");
+
             // Initialize connection pool
             _connectionPool = new ConnectionPool(
                 _options,
@@ -63,6 +70,13 @@ public class SurrealDbClient : ISurrealDbClient
 
             // Verify connection
             await _currentConnection.ConnectAsync(cancellationToken);
+
+            // Set namespace and database for this connection
+            var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
+            var response = await _currentConnection.SendAsync("QUERY", useNsDbStatement, null, cancellationToken);
+
+            if (string.IsNullOrEmpty(response))
+                throw new ConnectionException("Failed to set namespace and database: empty response");
 
             _isConnected = true;
         }
@@ -384,6 +398,19 @@ public class SurrealDbClient : ISurrealDbClient
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SurrealDbClient));
+    }
+
+    private static string EscapeIdentifier(string identifier)
+    {
+        // Wrap identifier in backticks if it contains special characters or spaces
+        if (string.IsNullOrWhiteSpace(identifier))
+            throw new ValidationException("Identifier cannot be empty.");
+
+        // If it already contains special characters, wrap it
+        if (identifier.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
+            return $"`{identifier}`";
+
+        return identifier;
     }
 
     private static void ValidateTable(string table)
