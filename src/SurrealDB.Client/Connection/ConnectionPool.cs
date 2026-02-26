@@ -102,38 +102,43 @@ internal class ConnectionPool : IConnectionPool
                 pooledConnection = null;
             }
 
-            // Check pool capacity before creating a new adapter
-            bool canCreate = false;
+            // Reserve a slot by adding a placeholder under lock to prevent race condition
+            // where multiple threads pass the capacity check and exceed PoolSize
             lock (_allConnections)
             {
-                if (_allConnections.Count < _options.PoolSize)
+                if (_allConnections.Count >= _options.PoolSize)
                 {
-                    canCreate = true;
+                    throw new ConnectionException("Connection pool exhausted and cannot create new connections");
                 }
-            }
 
-            if (!canCreate)
-            {
-                throw new ConnectionException("Connection pool exhausted and cannot create new connections");
-            }
+                // Reserve the slot with a placeholder (Adapter will be set below)
+                pooledConnection = new PooledConnection
+                {
+                    Id = Guid.NewGuid(),
+                    Adapter = null!,  // Will be set after factory call
+                    CreatedAt = DateTime.UtcNow,
+                    LastUsedAt = DateTime.UtcNow,
+                    InUse = true,
+                    UsageCount = 1
+                };
 
-            // Create the adapter BEFORE adding to _allConnections to prevent null-adapter
-            // corruption if DisposeAsync runs concurrently between those two steps.
-            var adapter = await _connectionFactory(cancellationToken);
-
-            pooledConnection = new PooledConnection
-            {
-                Id = Guid.NewGuid(),
-                Adapter = adapter,
-                CreatedAt = DateTime.UtcNow,
-                LastUsedAt = DateTime.UtcNow,
-                InUse = true,
-                UsageCount = 1
-            };
-
-            lock (_allConnections)
-            {
                 _allConnections.Add(pooledConnection);
+            }
+
+            try
+            {
+                // Create the adapter after reserving the slot
+                var adapter = await _connectionFactory(cancellationToken);
+                pooledConnection.Adapter = adapter;
+            }
+            catch
+            {
+                // Remove the placeholder if adapter creation fails
+                lock (_allConnections)
+                {
+                    _allConnections.Remove(pooledConnection);
+                }
+                throw;
             }
 
             Interlocked.Increment(ref _totalAcquisitions);
@@ -265,7 +270,11 @@ internal class ConnectionPool : IConnectionPool
     {
         try
         {
-            await pooled.Adapter.DisposeAsync();
+            // Defensive null check in case adapter creation failed
+            if (pooled.Adapter != null)
+            {
+                await pooled.Adapter.DisposeAsync();
+            }
         }
         catch
         {
