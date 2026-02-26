@@ -3,9 +3,11 @@ namespace SurrealDB.Client.Session;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Concurrency;
 using Query;
 
 /// <summary>
@@ -34,7 +36,14 @@ internal class SurrealDbSession : ISurrealDbSession
     {
         ThrowIfDisposed();
         var compiler = new SurrealQueryCompiler();
-        var provider = new SurrealDbQueryProvider(this, _client, compiler, table);
+        var interceptors = _client.GetInterceptors();
+        var provider = new SurrealDbQueryProvider(
+            this,
+            _client,
+            compiler,
+            table,
+            _client.QueryCache,
+            interceptors);
         return new SurrealDbQuery<T>(provider);
     }
 
@@ -164,6 +173,36 @@ internal class SurrealDbSession : ISurrealDbSession
                     var recordId = idProperty.GetValue(entity)?.ToString();
                     if (recordId != null)
                     {
+                        // Check for concurrency token
+                        var concurrencyProperty = ConcurrencyTokenManager.GetConcurrencyTokenProperty(entity.GetType());
+                        if (concurrencyProperty != null)
+                        {
+                            // Get the expected (original) token value
+                            var expectedToken = entry.GetOriginalPropertyValue(concurrencyProperty.Name);
+
+                            // Reload from database to check current token
+                            var dbEntity = await _client.GetAsync(recordId, entity.GetType(), cancellationToken)
+                                .ConfigureAwait(false);
+
+                            if (dbEntity != null)
+                            {
+                                var actualToken = concurrencyProperty.GetValue(dbEntity);
+
+                                // Check for conflict
+                                if (!ConcurrencyTokenManager.HasNoConflict(expectedToken, actualToken))
+                                {
+                                    throw DbUpdateConcurrencyException.Create(
+                                        recordId,
+                                        expectedToken,
+                                        actualToken);
+                                }
+
+                                // Update the token (increment or regenerate)
+                                var newToken = ConcurrencyTokenManager.IncrementToken(actualToken);
+                                concurrencyProperty.SetValue(entity, newToken);
+                            }
+                        }
+
                         await _client.UpdateAsync(recordId, entity, cancellationToken).ConfigureAwait(false);
                         entry.State = EntityState.Unchanged;
                         affectedCount++;

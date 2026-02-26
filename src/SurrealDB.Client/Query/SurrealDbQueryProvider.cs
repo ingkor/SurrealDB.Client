@@ -7,11 +7,14 @@ using System.Linq.Expressions;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Caching;
+using Interceptors;
 using Session;
 
 /// <summary>
 /// IQueryProvider implementation for SurrealDB.
 /// Translates LINQ expressions to SurrealQL and executes queries.
+/// Integrates caching and interceptors for performance and observability.
 /// </summary>
 public class SurrealDbQueryProvider : IQueryProvider
 {
@@ -19,16 +22,26 @@ public class SurrealDbQueryProvider : IQueryProvider
     private readonly SurrealDbClient _client;
     private readonly IQueryCompiler _compiler;
     private readonly string _table;
+    private readonly IQueryCache? _cache;
+    private readonly List<ISurrealDbInterceptor> _interceptors;
 
     /// <summary>
     /// Creates a new query provider.
     /// </summary>
-    public SurrealDbQueryProvider(ISurrealDbSession session, SurrealDbClient client, IQueryCompiler compiler, string table)
+    public SurrealDbQueryProvider(
+        ISurrealDbSession session,
+        SurrealDbClient client,
+        IQueryCompiler compiler,
+        string table,
+        IQueryCache? cache = null,
+        IEnumerable<ISurrealDbInterceptor>? interceptors = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
         _table = table ?? throw new ArgumentNullException(nameof(table));
+        _cache = cache;
+        _interceptors = interceptors?.ToList() ?? new List<ISurrealDbInterceptor>();
     }
 
     /// <summary>
@@ -115,6 +128,7 @@ public class SurrealDbQueryProvider : IQueryProvider
 
     /// <summary>
     /// Executes a query asynchronously and returns typed results.
+    /// Integrates caching and interceptors for performance and observability.
     /// </summary>
     public async Task<List<T>> ExecuteAsync<T>(
         Expression expression,
@@ -123,17 +137,98 @@ public class SurrealDbQueryProvider : IQueryProvider
         ArgumentNullException.ThrowIfNull(expression);
 
         var compiled = _compiler.CompileDetailed(expression, _table);
+        var cacheKey = GenerateCacheKey(compiled.SurrealQL);
+
+        // Check cache first
+        if (_cache != null)
+        {
+            var cached = _cache.Get<List<T>>(cacheKey);
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+
+        var startTime = DateTime.UtcNow;
+        var executingArgs = new QueryExecutingEventArgs { Query = compiled.SurrealQL };
 
         try
         {
+            // Call OnQueryExecuting interceptors
+            foreach (var interceptor in _interceptors)
+            {
+                await interceptor.OnQueryExecuting(executingArgs, cancellationToken).ConfigureAwait(false);
+
+                if (executingArgs.IsCancelled)
+                {
+                    throw new OperationCanceledException("Query execution cancelled by interceptor");
+                }
+            }
+
+            // Execute query
             var results = await _client.QueryAsync<T>(compiled.SurrealQL, cancellationToken)
                 .ConfigureAwait(false);
 
-            return results?.ToList() ?? new List<T>();
+            var resultList = results?.ToList() ?? new List<T>();
+
+            // Cache result
+            if (_cache != null)
+            {
+                _cache.Set(cacheKey, resultList, TimeSpan.FromMinutes(5));
+            }
+
+            // Call OnQueryExecuted interceptors
+            var duration = DateTime.UtcNow - startTime;
+            var executedArgs = new QueryExecutedEventArgs
+            {
+                Query = compiled.SurrealQL,
+                RowsAffected = resultList.Count,
+                Duration = duration,
+                Exception = null
+            };
+
+            foreach (var interceptor in _interceptors)
+            {
+                await interceptor.OnQueryExecuted(executedArgs, cancellationToken).ConfigureAwait(false);
+            }
+
+            return resultList;
         }
         catch (Exception ex)
         {
+            // Call OnQueryExecuted with exception
+            var failedDuration = DateTime.UtcNow - startTime;
+            var failedArgs = new QueryExecutedEventArgs
+            {
+                Query = compiled.SurrealQL,
+                RowsAffected = 0,
+                Duration = failedDuration,
+                Exception = ex
+            };
+
+            foreach (var interceptor in _interceptors)
+            {
+                try
+                {
+                    await interceptor.OnQueryExecuted(failedArgs, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Ignore interceptor errors during failure handling
+                }
+            }
+
             throw new QueryException($"Failed to execute query: {compiled.SurrealQL}", ex);
         }
+    }
+
+    /// <summary>
+    /// Generates a cache key for a query.
+    /// </summary>
+    private static string GenerateCacheKey(string query)
+    {
+        using var hasher = System.Security.Cryptography.SHA256.Create();
+        var hash = hasher.ComputeHash(System.Text.Encoding.UTF8.GetBytes(query));
+        return "query:" + Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

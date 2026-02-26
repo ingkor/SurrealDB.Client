@@ -1,7 +1,10 @@
 namespace SurrealDB.Client;
 
 using Authentication;
+using Caching;
 using Connection;
+using Interceptors;
+using Plugins;
 using Protocol;
 using Serialization;
 using Session;
@@ -13,6 +16,9 @@ public class SurrealDbClient : ISurrealDbClient
 {
     private readonly SurrealDbClientOptions _options;
     private readonly ISerializer _serializer;
+    private readonly List<ISurrealDbInterceptor> _interceptors = new();
+    private readonly IQueryCache _cache;
+    private readonly PluginManager _pluginManager = new();
     private IConnectionPool? _connectionPool;
     private IProtocolAdapter? _currentConnection;
     private AuthenticationSession? _authSession;
@@ -29,6 +35,7 @@ public class SurrealDbClient : ISurrealDbClient
         options.Validate();
         _options = options;
         _serializer = serializer ?? new SystemTextJsonSerializer();
+        _cache = new MemoryQueryCache();
     }
 
     /// <summary>
@@ -43,6 +50,38 @@ public class SurrealDbClient : ISurrealDbClient
     public SurrealDbClientOptions Options => _options;
 
     public bool IsConnected => _isConnected;
+
+    /// <summary>
+    /// Gets the query cache.
+    /// </summary>
+    public IQueryCache QueryCache => _cache;
+
+    /// <summary>
+    /// Gets the plugin manager.
+    /// </summary>
+    public PluginManager Plugins => _pluginManager;
+
+    /// <summary>
+    /// Registers an interceptor.
+    /// </summary>
+    public void AddInterceptor(ISurrealDbInterceptor interceptor)
+    {
+        ArgumentNullException.ThrowIfNull(interceptor);
+        _interceptors.Add(interceptor);
+    }
+
+    /// <summary>
+    /// Removes an interceptor.
+    /// </summary>
+    public void RemoveInterceptor(ISurrealDbInterceptor interceptor)
+    {
+        _interceptors.Remove(interceptor);
+    }
+
+    /// <summary>
+    /// Gets all registered interceptors.
+    /// </summary>
+    public IEnumerable<ISurrealDbInterceptor> GetInterceptors() => _interceptors.AsReadOnly();
 
     #region Sessions
 
