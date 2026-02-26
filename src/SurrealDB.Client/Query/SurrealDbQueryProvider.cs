@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Session;
 
 /// <summary>
@@ -109,5 +111,29 @@ public class SurrealDbQueryProvider : IQueryProvider
         }
 
         return queryResults ?? default!;
+    }
+
+    /// <summary>
+    /// Executes a query asynchronously and returns typed results.
+    /// </summary>
+    public async Task<List<T>> ExecuteAsync<T>(
+        Expression expression,
+        CancellationToken cancellationToken = default) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+
+        var compiled = _compiler.CompileDetailed(expression, _table);
+
+        try
+        {
+            var results = await _client.QueryAsync<T>(compiled.SurrealQL, cancellationToken)
+                .ConfigureAwait(false);
+
+            return results?.ToList() ?? new List<T>();
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to execute query: {compiled.SurrealQL}", ex);
+        }
     }
 }
