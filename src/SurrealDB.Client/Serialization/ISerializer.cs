@@ -27,4 +27,13 @@ public interface ISerializer
     /// <param name="type">The target type.</param>
     /// <returns>Deserialized object.</returns>
     object? Deserialize(string json, Type type);
+
+    /// <summary>
+    /// Deserializes a SurrealDB response envelope JSON string into a <see cref="SurrealDbResponse{T}"/>.
+    /// The envelope has the shape: { "status": "OK", "time": "1.5ms", "result": [...] }
+    /// </summary>
+    /// <typeparam name="T">The type of items in the result array.</typeparam>
+    /// <param name="json">The raw JSON string from SurrealDB.</param>
+    /// <returns>A <see cref="SurrealDbResponse{T}"/> containing status, time, and result.</returns>
+    SurrealDbResponse<T> DeserializeResponse<T>(string json);
 }

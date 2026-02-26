@@ -81,4 +81,36 @@ public class SystemTextJsonSerializer : ISerializer
                 $"Unexpected error during deserialization: {ex.Message}", ex);
         }
     }
+
+    public SurrealDbResponse<T> DeserializeResponse<T>(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            throw new SerializationException(
+                "Cannot deserialize SurrealDB response envelope: JSON string is null or empty.");
+
+        try
+        {
+            var response = JsonSerializer.Deserialize<SurrealDbResponse<T>>(json, _options);
+
+            if (response is null)
+                throw new SerializationException(
+                    $"Deserialization of SurrealDB response envelope returned null for type {typeof(T).Name}.");
+
+            return response;
+        }
+        catch (JsonException ex)
+        {
+            throw new SerializationException(
+                $"Failed to deserialize SurrealDB response envelope for type {typeof(T).Name}: {ex.Message}", ex);
+        }
+        catch (SerializationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new SerializationException(
+                $"Unexpected error deserializing SurrealDB response envelope: {ex.Message}", ex);
+        }
+    }
 }
