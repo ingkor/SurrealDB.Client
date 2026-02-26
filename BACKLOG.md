@@ -6,6 +6,21 @@
 
 ---
 
+## 🎯 EXECUTIVE DECISION: SurrealDB 3.0+ (NON-NEGOTIABLE)
+
+**Decision:** All development targets **SurrealDB 3.0 or newer only**
+- Minimum version: `3.0.0`
+- Enforce in `ConnectAsync`: throw `ConnectionException` if server version < 3.0
+- Benefits: Latest features, best performance, active development
+- No support for 1.x or 2.x
+
+**Implications:**
+- Feature 1.6 (UpsertAsync) uses SurrealDB 3.0+ syntax
+- Feature 1.13 documents 3.0+ requirement in README
+- Version validation happens immediately after authentication
+
+---
+
 ## 🚨 CRITICAL BUGS (P0 - BLOCKING)
 
 These must be fixed before any feature work begins. Each blocks Week 4 implementation.
@@ -392,17 +407,16 @@ Can only start after all P0 bugs and foundation work complete.
 ---
 
 ### Feature 1.6: Implement UpsertAsync
-**Depends On:** P0.4, P0.5, P0.6, P0.7 + SurrealDB version decision
+**Depends On:** P0.4, P0.5, P0.6, P0.7
 **Location:** `src/SurrealDB.Client/SurrealDbClient.cs`
 
 **Requirements:**
-- Decision required: Target SurrealDB 2.x only? Or support both 1.x and 2.x?
-- **Recommended: 2.x only**
-- SurrealQL (2.x): `UPSERT recordId CONTENT { ... } RETURN AFTER`
+- **SurrealDB 3.0+ only (non-negotiable)**
+- SurrealQL (3.0+): `UPSERT recordId CONTENT { ... } RETURN AFTER`
 - Return created or updated object
 
 **Acceptance Criteria:**
-- [ ] SurrealDB version target decided and documented
+- [ ] SurrealDB 3.0+ minimum version enforced in ConnectAsync
 - [ ] Upsert creates record if not exists
 - [ ] Upsert updates record if exists
 - [ ] Return value is created/updated object
@@ -546,11 +560,11 @@ Can only start after all P0 bugs and foundation work complete.
 ---
 
 ### Feature 1.13: Document SurrealDB Minimum Version
-**Depends On:** SurrealDB version decision
+**Depends On:** All foundation (P0)
 **Location:** `README.md`
 
 **Requirements:**
-- Document minimum SurrealDB version (2.x recommended)
+- **Document minimum SurrealDB version: 3.0+ (non-negotiable)**
 - Explain version-specific features (UPSERT syntax)
 - Validate version in `ConnectAsync`
 

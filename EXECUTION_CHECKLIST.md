@@ -140,11 +140,11 @@ All P0.1–P0.3 must complete before starting P0.4.
 
 All P0 items must complete before starting P1.
 
-### Prerequisite Decision: SurrealDB Version Target
-- [ ] Decide: Target 2.x only, or support both 1.x and 2.x?
-- [ ] **Recommended: 2.x only** (simpler, newer)
-- [ ] Document in README.md
-- [ ] Update `UPSERT` implementation accordingly
+### ⚡ DECISION LOCKED: SurrealDB 3.0+ (Non-Negotiable)
+- ✅ **Target: SurrealDB 3.0 or newer**
+- ✅ Enforce in `ConnectAsync`: throw if server < 3.0
+- ✅ Document in README.md
+- ✅ Use 3.0+ features (UPSERT, etc.)
 
 ### Feature 1.1: Implement CreateAsync
 - **Effort:** 4–6 hours
@@ -265,11 +265,11 @@ All P0 items must complete before starting P1.
 
 ---
 
-## 🔑 KEY DECISIONS NEEDED
+## 🔑 REMAINING DECISIONS
 
-- [ ] **SurrealDB Version Target:** 2.x only or both 1.x/2.x? → **Recommend: 2.x**
+- ✅ **SurrealDB Version Target:** LOCKED at 3.0+ (non-negotiable)
 - [ ] **Transaction Connection Hold:** Design document needed before Feature 1.8
-- [ ] **Team Assignment:** Who owns P0.1, P0.2, P0.3? (can be parallel)
+- [ ] **Team Assignment:** Who owns P0.1, P0.2, P0.3? (can be parallel) → **PRIMARY DEVELOPER ASSIGNMENT COMING**
 
 ---
 
