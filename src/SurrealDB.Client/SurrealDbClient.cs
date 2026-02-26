@@ -1,11 +1,20 @@
 namespace SurrealDB.Client;
 
+using Authentication;
+using Connection;
+using Protocol;
+using Serialization;
+
 /// <summary>
 /// Main SurrealDB client implementation.
 /// </summary>
 public class SurrealDbClient : ISurrealDbClient
 {
     private readonly SurrealDbClientOptions _options;
+    private readonly ISerializer _serializer;
+    private IConnectionPool? _connectionPool;
+    private IProtocolAdapter? _currentConnection;
+    private AuthenticationSession? _authSession;
     private bool _isConnected;
     private bool _disposed;
 
@@ -13,10 +22,12 @@ public class SurrealDbClient : ISurrealDbClient
     /// Initializes a new instance of the SurrealDbClient class.
     /// </summary>
     /// <param name="options">Client options.</param>
-    public SurrealDbClient(SurrealDbClientOptions options)
+    /// <param name="serializer">Custom serializer (optional).</param>
+    public SurrealDbClient(SurrealDbClientOptions options, ISerializer? serializer = null)
     {
         options.Validate();
         _options = options;
+        _serializer = serializer ?? new SystemTextJsonSerializer();
     }
 
     /// <summary>
@@ -40,12 +51,22 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
-            // TODO: Implement connection logic based on protocol type
-            // For now, this is a stub implementation
+            // Initialize connection pool
+            _connectionPool = new ConnectionPool(
+                _options,
+                ct => ProtocolAdapterFactory.CreateAdapterAsync(_options, ct));
+
+            await _connectionPool.InitializeAsync(cancellationToken);
+
+            // Get a test connection to verify it works
+            _currentConnection = await _connectionPool.AcquireAsync(cancellationToken);
+
+            // Verify connection
+            await _currentConnection.ConnectAsync(cancellationToken);
+
             _isConnected = true;
-            await Task.CompletedTask;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is SurrealDbException))
         {
             throw new ConnectionException($"Failed to connect to {_options.ConnectionString}", ex);
         }
@@ -90,20 +111,22 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrWhiteSpace(username))
-            throw new ValidationException("Username cannot be empty.");
-
-        if (string.IsNullOrWhiteSpace(password))
-            throw new ValidationException("Password cannot be empty.");
+        if (!_isConnected || _currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
         try
         {
-            // TODO: Implement username/password authentication
-            await Task.CompletedTask;
+            var provider = new BasicAuthenticationProvider(username, password);
+            await provider.AuthenticateAsync(_currentConnection, cancellationToken);
+
+            _authSession = new AuthenticationSession
+            {
+                EstablishedAt = DateTime.UtcNow
+            };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is SurrealDbException))
         {
-            throw new AuthenticationException("Authentication failed", ex);
+            throw new AuthenticationException("Basic authentication failed", ex);
         }
     }
 
@@ -111,17 +134,23 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrWhiteSpace(token))
-            throw new ValidationException("Token cannot be empty.");
+        if (!_isConnected || _currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
         try
         {
-            // TODO: Implement token authentication
-            await Task.CompletedTask;
+            var provider = new TokenAuthenticationProvider(token);
+            await provider.AuthenticateAsync(_currentConnection, cancellationToken);
+
+            _authSession = new AuthenticationSession
+            {
+                Token = token,
+                EstablishedAt = DateTime.UtcNow
+            };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!(ex is SurrealDbException))
         {
-            throw new AuthenticationException("Authentication failed", ex);
+            throw new AuthenticationException("Token authentication failed", ex);
         }
     }
 
