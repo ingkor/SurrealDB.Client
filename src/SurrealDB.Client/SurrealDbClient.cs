@@ -51,13 +51,6 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
-            // Validate namespace and database are required
-            if (string.IsNullOrWhiteSpace(_options.Namespace))
-                throw new ValidationException("Namespace is required and cannot be empty.");
-
-            if (string.IsNullOrWhiteSpace(_options.Database))
-                throw new ValidationException("Database is required and cannot be empty.");
-
             // Initialize connection pool
             _connectionPool = new ConnectionPool(
                 _options,
@@ -77,6 +70,10 @@ public class SurrealDbClient : ISurrealDbClient
 
             if (string.IsNullOrEmpty(response))
                 throw new ConnectionException("Failed to set namespace and database: empty response");
+
+            // Validate response for errors
+            if (response.Contains("\"error\"", StringComparison.OrdinalIgnoreCase))
+                throw new ConnectionException($"Failed to set namespace and database: {response}");
 
             _isConnected = true;
         }
@@ -405,6 +402,10 @@ public class SurrealDbClient : ISurrealDbClient
         // Wrap identifier in backticks if it contains special characters or spaces
         if (string.IsNullOrWhiteSpace(identifier))
             throw new ValidationException("Identifier cannot be empty.");
+
+        // Reject backticks to prevent SQL injection
+        if (identifier.Contains('`'))
+            throw new ValidationException("Identifier cannot contain backtick characters.");
 
         // If it already contains special characters, wrap it
         if (identifier.Any(c => !char.IsLetterOrDigit(c) && c != '_'))

@@ -203,19 +203,32 @@ internal class ConnectionPool : IConnectionPool
 
     public PoolStatistics GetStatistics()
     {
-        // Lock on _allConnections to prevent concurrent modifications during enumeration
+        // Snapshot under lock, compute outside to minimize lock duration
+        PooledConnection[] snapshot;
+        int totalCount;
         lock (_allConnections)
         {
-            return new PoolStatistics
-            {
-                TotalConnections = _allConnections.Count,
-                AvailableConnections = _availableConnections.Count,
-                InUseConnections = _allConnections.Count(c => c.InUse),
-                TotalAcquisitions = Interlocked.Read(ref _totalAcquisitions),
-                TotalReleases = Interlocked.Read(ref _totalReleases),
-                FailedHealthChecks = Interlocked.Read(ref _failedHealthChecks)
-            };
+            totalCount = _allConnections.Count;
+            snapshot = _allConnections.ToArray();
         }
+
+        // Compute InUse count outside the lock
+        int inUseCount = 0;
+        foreach (var conn in snapshot)
+        {
+            if (conn.InUse)
+                inUseCount++;
+        }
+
+        return new PoolStatistics
+        {
+            TotalConnections = totalCount,
+            AvailableConnections = _availableConnections.Count,
+            InUseConnections = inUseCount,
+            TotalAcquisitions = Interlocked.Read(ref _totalAcquisitions),
+            TotalReleases = Interlocked.Read(ref _totalReleases),
+            FailedHealthChecks = Interlocked.Read(ref _failedHealthChecks)
+        };
     }
 
     public async ValueTask DisposeAsync()

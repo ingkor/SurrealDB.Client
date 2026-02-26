@@ -119,6 +119,10 @@ public class TokenAuthenticationProvider : IAuthenticationProvider
                 var jsonDoc = System.Text.Json.JsonDocument.Parse(response);
                 var root = jsonDoc.RootElement;
 
+                // Check for error field first
+                if (root.TryGetProperty("error", out var errorProp))
+                    throw new AuthenticationException($"Token auth failed: {errorProp.GetString()}");
+
                 // Response should indicate success (common pattern: { "status": "ok" } or similar)
                 if (root.ValueKind == System.Text.Json.JsonValueKind.Object)
                 {
