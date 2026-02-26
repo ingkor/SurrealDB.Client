@@ -1,0 +1,430 @@
+namespace SurrealDB.Client;
+
+/// <summary>
+/// Main SurrealDB client implementation.
+/// </summary>
+public class SurrealDbClient : ISurrealDbClient
+{
+    private readonly SurrealDbClientOptions _options;
+    private bool _isConnected;
+    private bool _disposed;
+
+    /// <summary>
+    /// Initializes a new instance of the SurrealDbClient class.
+    /// </summary>
+    /// <param name="options">Client options.</param>
+    public SurrealDbClient(SurrealDbClientOptions options)
+    {
+        options.Validate();
+        _options = options;
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the SurrealDbClient class.
+    /// </summary>
+    /// <param name="connectionString">Connection string.</param>
+    public SurrealDbClient(string connectionString)
+        : this(new SurrealDbClientOptions { ConnectionString = connectionString })
+    {
+    }
+
+    public SurrealDbClientOptions Options => _options;
+
+    public bool IsConnected => _isConnected;
+
+    #region Connection Management
+
+    public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            // TODO: Implement connection logic based on protocol type
+            // For now, this is a stub implementation
+            _isConnected = true;
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new ConnectionException($"Failed to connect to {_options.ConnectionString}", ex);
+        }
+    }
+
+    public async Task DisconnectAsync()
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            // TODO: Implement disconnection logic
+            _isConnected = false;
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new ConnectionException("Failed to disconnect", ex);
+        }
+    }
+
+    public async Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            // TODO: Implement health check
+            return _isConnected;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Authentication
+
+    public async Task AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ValidationException("Username cannot be empty.");
+
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ValidationException("Password cannot be empty.");
+
+        try
+        {
+            // TODO: Implement username/password authentication
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new AuthenticationException("Authentication failed", ex);
+        }
+    }
+
+    public async Task AuthenticateAsync(string token, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (string.IsNullOrWhiteSpace(token))
+            throw new ValidationException("Token cannot be empty.");
+
+        try
+        {
+            // TODO: Implement token authentication
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new AuthenticationException("Authentication failed", ex);
+        }
+    }
+
+    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            // TODO: Implement logout
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new ConnectionException("Logout failed", ex);
+        }
+    }
+
+    #endregion
+
+    #region CRUD Operations
+
+    public async Task<T> CreateAsync<T>(string table, T data, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateTable(table);
+
+        try
+        {
+            // TODO: Implement CREATE operation
+            await Task.CompletedTask;
+            return data;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to create record in {table}", ex);
+        }
+    }
+
+    public async Task<IEnumerable<T>> CreateAsync<T>(string table, IEnumerable<T> data, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateTable(table);
+
+        try
+        {
+            // TODO: Implement bulk CREATE operation
+            await Task.CompletedTask;
+            return data;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to create records in {table}", ex);
+        }
+    }
+
+    public async Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRecordId(recordId);
+
+        try
+        {
+            // TODO: Implement GET operation
+            await Task.CompletedTask;
+            return default;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to get record {recordId}", ex);
+        }
+    }
+
+    public async Task<IEnumerable<T>> SelectAsync<T>(string table, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateTable(table);
+
+        try
+        {
+            // TODO: Implement SELECT operation
+            await Task.CompletedTask;
+            return Enumerable.Empty<T>();
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to select from {table}", ex);
+        }
+    }
+
+    public async Task<T> UpdateAsync<T>(string recordId, T data, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRecordId(recordId);
+
+        try
+        {
+            // TODO: Implement UPDATE operation
+            await Task.CompletedTask;
+            return data;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to update record {recordId}", ex);
+        }
+    }
+
+    public async Task DeleteAsync(string recordId, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRecordId(recordId);
+
+        try
+        {
+            // TODO: Implement DELETE operation
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to delete record {recordId}", ex);
+        }
+    }
+
+    public async Task<T> UpsertAsync<T>(string recordId, T data, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRecordId(recordId);
+
+        try
+        {
+            // TODO: Implement UPSERT operation
+            await Task.CompletedTask;
+            return data;
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException($"Failed to upsert record {recordId}", ex);
+        }
+    }
+
+    #endregion
+
+    #region Query Execution
+
+    public async Task<QueryResult> QueryAsync(
+        string surrealQL,
+        Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateQuery(surrealQL);
+
+        try
+        {
+            // TODO: Implement raw query execution
+            await Task.CompletedTask;
+            return new QueryResult { Status = "OK" };
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException("Query execution failed", ex);
+        }
+    }
+
+    public async Task<IEnumerable<T>> QueryAsync<T>(
+        string surrealQL,
+        Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateQuery(surrealQL);
+
+        try
+        {
+            // TODO: Implement typed query execution
+            await Task.CompletedTask;
+            return Enumerable.Empty<T>();
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException("Query execution failed", ex);
+        }
+    }
+
+    #endregion
+
+    #region Transactions
+
+    public async Task<ISurrealDbTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            // TODO: Implement transaction
+            await Task.CompletedTask;
+            return new SurrealDbTransaction(this);
+        }
+        catch (Exception ex)
+        {
+            throw new QueryException("Failed to begin transaction", ex);
+        }
+    }
+
+    #endregion
+
+    #region Disposal
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        try
+        {
+            await DisconnectAsync();
+        }
+        catch
+        {
+            // Suppress errors during disposal
+        }
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(SurrealDbClient));
+    }
+
+    private static void ValidateTable(string table)
+    {
+        if (string.IsNullOrWhiteSpace(table))
+            throw new ValidationException("Table name cannot be empty.");
+    }
+
+    private static void ValidateRecordId(string recordId)
+    {
+        if (string.IsNullOrWhiteSpace(recordId))
+            throw new ValidationException("Record ID cannot be empty.");
+    }
+
+    private static void ValidateQuery(string surrealQL)
+    {
+        if (string.IsNullOrWhiteSpace(surrealQL))
+            throw new ValidationException("Query cannot be empty.");
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Transaction implementation.
+/// </summary>
+internal class SurrealDbTransaction : ISurrealDbTransaction
+{
+    private readonly SurrealDbClient _client;
+
+    public SurrealDbTransaction(SurrealDbClient client)
+    {
+        _client = client;
+    }
+
+    public async Task<QueryResult> QueryAsync(
+        string surrealQL,
+        Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default)
+    {
+        // TODO: Implement transactional query execution
+        await Task.CompletedTask;
+        return new QueryResult { Status = "OK" };
+    }
+
+    public async Task<IEnumerable<T>> QueryAsync<T>(
+        string surrealQL,
+        Dictionary<string, object>? parameters = null,
+        CancellationToken cancellationToken = default)
+    {
+        // TODO: Implement transactional typed query execution
+        await Task.CompletedTask;
+        return Enumerable.Empty<T>();
+    }
+
+    public async Task CommitAsync(CancellationToken cancellationToken = default)
+    {
+        // TODO: Implement transaction commit
+        await Task.CompletedTask;
+    }
+
+    public async Task RollbackAsync(CancellationToken cancellationToken = default)
+    {
+        // TODO: Implement transaction rollback
+        await Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Cleanup if needed
+        await Task.CompletedTask;
+    }
+}

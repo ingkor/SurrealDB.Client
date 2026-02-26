@@ -1,0 +1,52 @@
+<Project>
+  <PropertyGroup>
+    <!-- Package Metadata -->
+    <PackageName>SurrealDB.Client</PackageName>
+    <Title>SurrealDB Client</Title>
+    <Description>Production-grade .NET/C# client library for SurrealDB with Entity Framework Core-inspired state management, composable queries, and real-time subscriptions.</Description>
+    <Authors>SurrealDB Contributors</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/surrealdb/surrealdb.net</PackageProjectUrl>
+    <PackageRepositoryUrl>https://github.com/surrealdb/surrealdb.net</PackageRepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>surrealdb;database;client;orm;ef-core;query-composition</PackageTags>
+
+    <!-- Version -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>beta-1</VersionSuffix>
+    <InformationalVersion>$(VersionPrefix)-$(VersionSuffix)</InformationalVersion>
+
+    <!-- Build Configuration -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <WarningLevel>4</WarningLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- NuGet Packaging -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSource>true</IncludeSource>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- Testing -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Target Framework -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <!-- NuGet Dependency Versions -->
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Test Project Configuration -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>
