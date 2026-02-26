@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Query;
 
 /// <summary>
 /// Implementation of ISurrealDbSession providing Unit of Work pattern.
@@ -32,9 +33,9 @@ internal class SurrealDbSession : ISurrealDbSession
     public IQueryable<T> Set<T>(string table) where T : class
     {
         ThrowIfDisposed();
-        // TODO: Implement IQueryable provider
-        // For now, return empty queryable as placeholder
-        return Enumerable.Empty<T>().AsQueryable();
+        var compiler = new SurrealQueryCompiler();
+        var provider = new SurrealDbQueryProvider(this, _client, compiler, table);
+        return new SurrealDbQuery<T>(provider);
     }
 
     public void Add<T>(T entity) where T : class

@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Text.Json;
 using Session;
 
 /// <summary>
@@ -13,15 +14,19 @@ using Session;
 public class SurrealDbQueryProvider : IQueryProvider
 {
     private readonly ISurrealDbSession _session;
+    private readonly SurrealDbClient _client;
     private readonly IQueryCompiler _compiler;
+    private readonly string _table;
 
     /// <summary>
     /// Creates a new query provider.
     /// </summary>
-    public SurrealDbQueryProvider(ISurrealDbSession session, IQueryCompiler compiler)
+    public SurrealDbQueryProvider(ISurrealDbSession session, SurrealDbClient client, IQueryCompiler compiler, string table)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _client = client ?? throw new ArgumentNullException(nameof(client));
         _compiler = compiler ?? throw new ArgumentNullException(nameof(compiler));
+        _table = table ?? throw new ArgumentNullException(nameof(table));
     }
 
     /// <summary>
@@ -53,9 +58,14 @@ public class SurrealDbQueryProvider : IQueryProvider
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        var surrealQL = _compiler.Compile(expression);
-        // TODO: Execute scalar query
-        return null;
+        var compiled = _compiler.CompileDetailed(expression, _table);
+
+        // For scalar queries, run synchronously (blocking)
+        // In production, this should be async
+        var task = _client.QueryAsync<dynamic>(compiled.SurrealQL);
+        var result = task.GetAwaiter().GetResult();
+
+        return result?.FirstOrDefault();
     }
 
     /// <summary>
@@ -65,10 +75,39 @@ public class SurrealDbQueryProvider : IQueryProvider
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        var surrealQL = _compiler.Compile(expression);
+        var compiled = _compiler.CompileDetailed(expression, _table);
 
-        // TODO: Execute query and return TResult
-        // For now, return default
-        return default!;
+        // Check if this is a scalar query
+        if (compiled.IsScalar && typeof(TResult).IsGenericType &&
+            typeof(TResult).GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        {
+            // Return enumerable for scalar results
+            var task = _client.QueryAsync<dynamic>(compiled.SurrealQL);
+            var results = task.GetAwaiter().GetResult() ?? new List<dynamic>();
+
+            return (TResult)(object)results;
+        }
+
+        // Execute typed query
+        var queryTask = _client.QueryAsync<TResult>(compiled.SurrealQL);
+        var queryResults = queryTask.GetAwaiter().GetResult();
+
+        if (typeof(TResult).IsGenericType &&
+            typeof(TResult).GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        {
+            return (TResult)(object)(queryResults ?? new List<TResult>());
+        }
+
+        // If requesting a single result, return first or default
+        if (typeof(TResult).IsGenericType && typeof(TResult).GenericTypeArguments[0].IsClass)
+        {
+            var elementType = typeof(TResult).GenericTypeArguments[0];
+            var list = (IEnumerable<TResult>?)queryResults;
+            var first = list?.FirstOrDefault();
+
+            return first!;
+        }
+
+        return queryResults ?? default!;
     }
 }
