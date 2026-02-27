@@ -117,6 +117,9 @@ public class SurrealDbClientOptions
         if (string.IsNullOrWhiteSpace(ConnectionString))
             throw new ValidationException("ConnectionString cannot be empty.");
 
+        // SECURITY FIX: P0-2 - Validate connection string doesn't contain embedded credentials
+        ValidateConnectionString(ConnectionString);
+
         if (string.IsNullOrWhiteSpace(Namespace))
             throw new ValidationException("Namespace is required and cannot be empty.");
 
@@ -150,6 +153,51 @@ public class SurrealDbClientOptions
 
         if (MaxRetryAttempts < 0)
             throw new ValidationException("MaxRetryAttempts cannot be negative.");
+    }
+
+    /// <summary>
+    /// SECURITY: Validates that the connection string doesn't contain embedded credentials.
+    /// P0-2: Connection String Credentials - Connection strings may contain embedded credentials.
+    ///
+    /// Checks for embedded credentials pattern (user:password@host) in the connection string.
+    /// This prevents accidental credential exposure and enforces the use of AuthenticateAsync().
+    /// </summary>
+    /// <param name="connectionString">The connection string to validate.</param>
+    /// <exception cref="ValidationException">Thrown if connection string contains embedded credentials.</exception>
+    private static void ValidateConnectionString(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            return;
+
+        // Check for embedded credentials pattern (anything with @ in the authority section)
+        // Pattern: scheme://[user:password@]host:port
+        // We need to be careful not to reject file:// URLs with @ in the path
+
+        // First, check if this is a file:// URL (allowed to have @ in path)
+        if (connectionString.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // For other schemes, check if @ appears before the first slash after ://
+        // This indicates credentials in the authority section
+        var schemeEnd = connectionString.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd == -1)
+            return; // No scheme, can't have embedded credentials
+
+        var authorityStart = schemeEnd + 3;
+        var pathStart = connectionString.IndexOf('/', authorityStart);
+
+        // Get the authority section (between :// and the first /)
+        var authoritySection = pathStart == -1
+            ? connectionString.Substring(authorityStart)
+            : connectionString.Substring(authorityStart, pathStart - authorityStart);
+
+        // Check if @ exists in the authority section
+        if (authoritySection.Contains('@'))
+        {
+            throw new ValidationException(
+                "Connection string cannot contain embedded credentials (user:password@). " +
+                "Use AuthenticateAsync() method to provide credentials separately for security.");
+        }
     }
 
     /// <summary>

@@ -42,8 +42,10 @@ internal class HttpProtocolAdapter : IProtocolAdapter
 
             if (!response.IsSuccessStatusCode)
             {
-                throw new ConnectionException(
-                    $"Failed to connect to SurrealDB: HTTP {response.StatusCode}");
+                var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                // SECURITY: Sanitize error message to prevent information disclosure
+                var sanitizedMessage = SanitizeErrorMessage(errorContent, response.StatusCode);
+                throw new ConnectionException($"Failed to connect to SurrealDB: {sanitizedMessage}");
             }
 
             IsConnected = true;
@@ -112,8 +114,9 @@ internal class HttpProtocolAdapter : IProtocolAdapter
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
-                throw new QueryException(
-                    $"Query failed with HTTP {response.StatusCode}: {errorContent}");
+                // SECURITY: Sanitize error message to prevent information disclosure
+                var sanitizedMessage = SanitizeErrorMessage(errorContent, response.StatusCode);
+                throw new QueryException(sanitizedMessage);
             }
 
             return await response.Content.ReadAsStringAsync(cts.Token);
@@ -223,6 +226,32 @@ internal class HttpProtocolAdapter : IProtocolAdapter
             "DELETE" => HttpMethod.Delete,
             "PATCH" => HttpMethod.Patch,
             _ => throw new ArgumentException($"Unsupported HTTP method: {method}")
+        };
+    }
+
+    /// <summary>
+    /// SECURITY: Sanitizes error messages to prevent information disclosure.
+    /// P0-1: Error Message Exposure - Server error responses expose sensitive information.
+    ///
+    /// This method maps HTTP status codes to generic, safe error messages that don't
+    /// expose internal details like stack traces, schema information, query details,
+    /// or authentication information.
+    /// </summary>
+    /// <param name="errorContent">The original error content from the server (not used, logged internally only).</param>
+    /// <param name="statusCode">The HTTP status code.</param>
+    /// <returns>A sanitized, generic error message safe for external consumption.</returns>
+    private static string SanitizeErrorMessage(string errorContent, System.Net.HttpStatusCode statusCode)
+    {
+        // TODO: Log full error details internally for debugging
+        // For now, return generic message based on status code only
+        return statusCode switch
+        {
+            System.Net.HttpStatusCode.BadRequest => "Invalid request format",
+            System.Net.HttpStatusCode.Unauthorized => "Authentication failed",
+            System.Net.HttpStatusCode.Forbidden => "Access denied",
+            System.Net.HttpStatusCode.NotFound => "Resource not found",
+            >= System.Net.HttpStatusCode.InternalServerError => "Server error occurred",
+            _ => "Operation failed"
         };
     }
 }
