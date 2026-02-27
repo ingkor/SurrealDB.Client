@@ -1,5 +1,6 @@
 namespace SurrealDB.Client.Authentication;
 
+using Exceptions;
 using Protocol;
 
 /// <summary>

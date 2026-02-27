@@ -2,6 +2,7 @@ namespace SurrealDB.Client.Protocol;
 
 using System.Net.Http;
 using System.Text;
+using Exceptions;
 
 /// <summary>
 /// HTTP protocol adapter for SurrealDB communication.

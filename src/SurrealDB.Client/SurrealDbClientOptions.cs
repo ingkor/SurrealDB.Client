@@ -1,5 +1,7 @@
 namespace SurrealDB.Client;
 
+using Exceptions;
+
 /// <summary>
 /// Configuration options for SurrealDbClient.
 /// </summary>
