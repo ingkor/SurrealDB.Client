@@ -1,4 +1,5 @@
 using Xunit;
+using SurrealDB.Client.Exceptions;
 
 namespace SurrealDB.Client.Tests.Unit;
 
