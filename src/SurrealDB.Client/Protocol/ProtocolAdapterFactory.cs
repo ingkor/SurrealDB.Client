@@ -34,7 +34,8 @@ internal static class ProtocolAdapterFactory
     }
 
     /// <summary>
-    /// Creates an HTTP protocol adapter.
+    /// SECURITY: Creates an HTTP protocol adapter with certificate validation.
+    /// P1-3: Enforces certificate validation unless explicitly disabled with risk acknowledgment.
     /// </summary>
     private static IProtocolAdapter CreateHttpAdapter(Uri baseUri, SurrealDbClientOptions options)
     {
@@ -42,13 +43,17 @@ internal static class ProtocolAdapterFactory
 
         var httpClientHandler = new HttpClientHandler();
 
+        // SECURITY: P1-3 - Certificate validation is only disabled if explicitly acknowledged
+        // This is validated in SurrealDbClientOptions.Validate()
         if (!options.VerifyServerCertificate)
         {
+            // Developer has explicitly acknowledged the risk via AcknowledgeCertificateValidationRisk
 #pragma warning disable S4830 // Server certificates should be verified
             httpClientHandler.ServerCertificateCustomValidationCallback =
                 (_, _, _, _) => true;
 #pragma warning restore S4830
         }
+        // else: Use default certificate validation (secure)
 
         var httpClient = new HttpClient(httpClientHandler, disposeHandler: true);
         httpClient.Timeout = options.CommandTimeout;

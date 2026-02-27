@@ -68,14 +68,40 @@ public class SurrealDbClientOptions
     public string? Database { get; set; }
 
     /// <summary>
-    /// Gets or sets whether to use HTTPS for HTTP connections.
+    /// SECURITY: Gets or sets whether to use HTTPS for HTTP connections.
+    /// P1-3: HTTP certificate validation disabled by default.
+    ///
+    /// DEFAULT CHANGED: Now defaults to TRUE for security.
+    /// Set to false only in development/testing environments where you control the network.
     /// </summary>
-    public bool UseHttps { get; set; } = false;
+    public bool UseHttps { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets whether to verify SSL certificates (HTTP only).
+    /// SECURITY: Gets or sets whether to verify SSL/TLS certificates.
+    /// P1-3: Certificate validation can be disabled.
+    ///
+    /// WARNING: Disabling certificate validation exposes you to man-in-the-middle attacks.
+    /// This should NEVER be disabled in production environments.
+    ///
+    /// This setting applies to both HTTP and WebSocket connections.
+    /// Default: true (secure)
+    ///
+    /// To disable (NOT RECOMMENDED), you must explicitly acknowledge the security risk:
+    ///   options.VerifyServerCertificate = false;
+    ///   options.AcknowledgeCertificateValidationRisk = true;
     /// </summary>
     public bool VerifyServerCertificate { get; set; } = true;
+
+    /// <summary>
+    /// SECURITY: Explicit acknowledgment required to disable certificate validation.
+    /// P1-3: Make certificate validation non-disableable without explicit consent.
+    ///
+    /// When VerifyServerCertificate is set to false, this property MUST also be set to true,
+    /// or validation will fail. This forces developers to consciously acknowledge the risk.
+    ///
+    /// WARNING: Only use this in development/testing. NEVER in production.
+    /// </summary>
+    public bool AcknowledgeCertificateValidationRisk { get; set; } = false;
 
     /// <summary>
     /// Gets or sets the serializer to use for JSON serialization.
@@ -101,6 +127,17 @@ public class SurrealDbClientOptions
         // Only permit alphanumeric characters, underscore, and hyphen to prevent injection
         ValidateIdentifier(Namespace, "Namespace");
         ValidateIdentifier(Database, "Database");
+
+        // SECURITY FIX: P1-3 - Enforce certificate validation or explicit risk acknowledgment
+        if (!VerifyServerCertificate && !AcknowledgeCertificateValidationRisk)
+        {
+            throw new ValidationException(
+                "Certificate validation is disabled, but risk has not been acknowledged. " +
+                "This is a critical security vulnerability that exposes you to man-in-the-middle attacks. " +
+                "If you understand the risks and are in a controlled development/testing environment, " +
+                "set 'AcknowledgeCertificateValidationRisk = true'. " +
+                "NEVER disable certificate validation in production.");
+        }
 
         if (PoolSize < 1)
             throw new ValidationException("PoolSize must be at least 1.");

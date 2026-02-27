@@ -49,9 +49,21 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         {
             _webSocket = new ClientWebSocket();
 
+            // SECURITY FIX: P1-5 - Add certificate validation to WebSocket connections
+            if (!_options.VerifyServerCertificate)
+            {
+                // Developer has explicitly acknowledged the risk via AcknowledgeCertificateValidationRisk
+                // This was validated in SurrealDbClientOptions.Validate()
+#pragma warning disable S4830 // Server certificates should be verified
+                _webSocket.Options.RemoteCertificateValidationCallback =
+                    (sender, certificate, chain, sslPolicyErrors) => true;
+#pragma warning restore S4830
+            }
+            // else: Use default certificate validation (secure)
+
             var wsUri = new UriBuilder(_baseUri)
             {
-                Scheme = _baseUri.Scheme == "https" ? "wss" : "ws"
+                Scheme = _baseUri.Scheme == "https" || _options.UseHttps ? "wss" : "ws"
             }.Uri;
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
