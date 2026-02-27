@@ -8,17 +8,29 @@ using Protocol;
 using Serialization;
 
 /// <summary>
+/// F10 Fix: Protocol method constants to avoid magic strings.
+/// </summary>
+internal static class ProtocolMethods
+{
+    public const string Query = "QUERY";
+    public const string SignIn = "signin";
+    public const string Ping = "ping";
+}
+
+/// <summary>
 /// Main SurrealDB client implementation.
 /// </summary>
 public class SurrealDbClient : ISurrealDbClient
 {
     private readonly SurrealDbClientOptions _options;
     private readonly ISerializer _serializer;
+    private readonly SemaphoreSlim _connectLock = new SemaphoreSlim(1, 1); // F4: Prevent concurrent ConnectAsync
     private IConnectionPool? _connectionPool;
     private IProtocolAdapter? _currentConnection;
     private AuthenticationSession? _authSession;
-    private bool _isConnected;
-    private bool _disposed;
+    // F8 Fix: Add volatile modifier to flag fields for thread-safety
+    private volatile bool _isConnected;
+    private volatile bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the SurrealDbClient class.
@@ -51,71 +63,88 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
-        IProtocolAdapter? connection = null;
+        // F4 Fix: Use semaphore to prevent concurrent ConnectAsync calls
+        await _connectLock.WaitAsync(cancellationToken);
         try
         {
-            // Initialize connection pool
-            _connectionPool = new ConnectionPool(
-                _options,
-                ct => ProtocolAdapterFactory.CreateAdapterAsync(_options, ct));
-
-            await _connectionPool.InitializeAsync(cancellationToken);
-
-            // Get a test connection to verify it works
-            connection = await _connectionPool.AcquireAsync(cancellationToken);
-            _currentConnection = connection;
-
-            // Verify connection
-            await _currentConnection.ConnectAsync(cancellationToken);
-
-            // Set namespace and database for this connection
-            var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
-            var response = await _currentConnection.SendAsync("QUERY", useNsDbStatement, null, cancellationToken);
-
-            if (string.IsNullOrEmpty(response))
-                throw new ConnectionException("Failed to set namespace and database: empty response");
-
-            // F6 Fix: Validate response for errors using proper JSON parsing
-            if (HasRootLevelError(response))
-                throw new ConnectionException($"Failed to set namespace and database: {response}");
-
-            _isConnected = true;
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            // F2 Fix: Release connection on failure to prevent connection leak
-            if (connection != null && _connectionPool != null)
+            // F4 Fix: Check if already connected
+            if (_isConnected && _connectionPool != null)
             {
-                try
-                {
-                    await _connectionPool.ReleaseAsync(connection, healthy: false);
-                }
-                catch
-                {
-                    // Suppress errors during cleanup
-                }
-                _currentConnection = null;
+                return; // Already connected, nothing to do
             }
 
-            throw new ConnectionException($"Failed to connect to {_options.ConnectionString}", ex);
-        }
-        catch
-        {
-            // F2 Fix: Also handle SurrealDbException cases
-            if (connection != null && _connectionPool != null)
+            IProtocolAdapter? connection = null;
+            try
             {
-                try
-                {
-                    await _connectionPool.ReleaseAsync(connection, healthy: false);
-                }
-                catch
-                {
-                    // Suppress errors during cleanup
-                }
-                _currentConnection = null;
-            }
+                // Initialize connection pool
+                _connectionPool = new ConnectionPool(
+                    _options,
+                    ct => ProtocolAdapterFactory.CreateAdapterAsync(_options, ct));
 
-            throw;
+                await _connectionPool.InitializeAsync(cancellationToken);
+
+                // Get a test connection to verify it works
+                connection = await _connectionPool.AcquireAsync(cancellationToken);
+                _currentConnection = connection;
+
+                // Verify connection
+                await _currentConnection.ConnectAsync(cancellationToken);
+
+                // Set namespace and database for this connection
+                // F10 Fix: Use constant for QUERY method
+                var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
+                var response = await _currentConnection.SendAsync(ProtocolMethods.Query, useNsDbStatement, null, cancellationToken);
+
+                if (string.IsNullOrEmpty(response))
+                    throw new ConnectionException("Failed to set namespace and database: empty response");
+
+                // F6 Fix: Validate response for errors using proper JSON parsing
+                if (HasRootLevelError(response))
+                    throw new ConnectionException($"Failed to set namespace and database: {response}");
+
+                _isConnected = true;
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                // F2 Fix: Release connection on failure to prevent connection leak
+                if (connection != null && _connectionPool != null)
+                {
+                    try
+                    {
+                        await _connectionPool.ReleaseAsync(connection, healthy: false);
+                    }
+                    catch
+                    {
+                        // Suppress errors during cleanup
+                    }
+                    _currentConnection = null;
+                }
+
+                throw new ConnectionException($"Failed to connect to {_options.ConnectionString}", ex);
+            }
+            catch
+            {
+                // F2 Fix: Also handle SurrealDbException cases
+                if (connection != null && _connectionPool != null)
+                {
+                    try
+                    {
+                        await _connectionPool.ReleaseAsync(connection, healthy: false);
+                    }
+                    catch
+                    {
+                        // Suppress errors during cleanup
+                    }
+                    _currentConnection = null;
+                }
+
+                throw;
+            }
+        }
+        finally
+        {
+            // F4 Fix: Always release the lock
+            _connectLock.Release();
         }
     }
 
@@ -453,6 +482,16 @@ public class SurrealDbClient : ISurrealDbClient
                     // Suppress errors during disposal
                 }
                 _connectionPool = null;
+            }
+
+            // F4 Fix: Dispose semaphore
+            try
+            {
+                _connectLock.Dispose();
+            }
+            catch
+            {
+                // Suppress errors during disposal
             }
 
             _isConnected = false;

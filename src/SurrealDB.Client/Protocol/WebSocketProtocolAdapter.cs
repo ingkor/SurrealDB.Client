@@ -8,6 +8,16 @@ using System.Text.Json;
 using Exceptions;
 
 /// <summary>
+/// F10 Fix: Protocol method constants to avoid magic strings.
+/// </summary>
+internal static class ProtocolMethods
+{
+    public const string Query = "QUERY";
+    public const string SignIn = "signin";
+    public const string Ping = "ping";
+}
+
+/// <summary>
 /// WebSocket protocol adapter for SurrealDB communication.
 /// </summary>
 internal class WebSocketProtocolAdapter : IProtocolAdapter
@@ -148,7 +158,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         {
             var requestId = Interlocked.Increment(ref _requestId);
             // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
-            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize("signin")},\"params\":[{credentials}]}}";
+            // F10 Fix: Use constant for method name
+            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(ProtocolMethods.SignIn)},\"params\":[{credentials}]}}";
 
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
@@ -188,7 +199,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 return false;
 
             var requestId = Interlocked.Increment(ref _requestId);
-            var message = $"{{\"id\":{requestId},\"method\":\"ping\"}}";
+            // F10 Fix: Use constant for method name
+            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(ProtocolMethods.Ping)}}}";
 
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
