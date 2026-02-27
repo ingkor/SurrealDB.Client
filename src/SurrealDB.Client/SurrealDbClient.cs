@@ -51,6 +51,7 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
+        IProtocolAdapter? connection = null;
         try
         {
             // Initialize connection pool
@@ -61,7 +62,8 @@ public class SurrealDbClient : ISurrealDbClient
             await _connectionPool.InitializeAsync(cancellationToken);
 
             // Get a test connection to verify it works
-            _currentConnection = await _connectionPool.AcquireAsync(cancellationToken);
+            connection = await _connectionPool.AcquireAsync(cancellationToken);
+            _currentConnection = connection;
 
             // Verify connection
             await _currentConnection.ConnectAsync(cancellationToken);
@@ -81,7 +83,39 @@ public class SurrealDbClient : ISurrealDbClient
         }
         catch (Exception ex) when (!(ex is SurrealDbException))
         {
+            // F2 Fix: Release connection on failure to prevent connection leak
+            if (connection != null && _connectionPool != null)
+            {
+                try
+                {
+                    await _connectionPool.ReleaseAsync(connection, healthy: false);
+                }
+                catch
+                {
+                    // Suppress errors during cleanup
+                }
+                _currentConnection = null;
+            }
+
             throw new ConnectionException($"Failed to connect to {_options.ConnectionString}", ex);
+        }
+        catch
+        {
+            // F2 Fix: Also handle SurrealDbException cases
+            if (connection != null && _connectionPool != null)
+            {
+                try
+                {
+                    await _connectionPool.ReleaseAsync(connection, healthy: false);
+                }
+                catch
+                {
+                    // Suppress errors during cleanup
+                }
+                _currentConnection = null;
+            }
+
+            throw;
         }
     }
 
@@ -91,9 +125,21 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
-            // TODO: Implement disconnection logic
+            // F3 Fix: Release current connection back to pool
+            if (_currentConnection != null && _connectionPool != null)
+            {
+                try
+                {
+                    await _connectionPool.ReleaseAsync(_currentConnection, healthy: true);
+                }
+                catch
+                {
+                    // Suppress errors during disconnection
+                }
+                _currentConnection = null;
+            }
+
             _isConnected = false;
-            await Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -381,7 +427,35 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
-            await DisconnectAsync();
+            // F3 Fix: Release current connection if still held
+            if (_currentConnection != null && _connectionPool != null)
+            {
+                try
+                {
+                    await _connectionPool.ReleaseAsync(_currentConnection, healthy: false);
+                }
+                catch
+                {
+                    // Suppress errors during disposal
+                }
+                _currentConnection = null;
+            }
+
+            // F3 Fix: Dispose connection pool to release all resources
+            if (_connectionPool != null)
+            {
+                try
+                {
+                    await _connectionPool.DisposeAsync();
+                }
+                catch
+                {
+                    // Suppress errors during disposal
+                }
+                _connectionPool = null;
+            }
+
+            _isConnected = false;
         }
         catch
         {
