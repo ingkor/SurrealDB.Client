@@ -512,20 +512,37 @@ public class SurrealDbClient : ISurrealDbClient
             throw new ObjectDisposedException(nameof(SurrealDbClient));
     }
 
+    /// <summary>
+    /// SECURITY FIX: Escapes SurrealDB identifiers using strict allowlist validation.
+    /// Vuln 3: SurrealQL Injection via weak identifier escaping.
+    ///
+    /// Only permits: alphanumeric characters (a-z, A-Z, 0-9), underscore (_), and hyphen (-).
+    /// This prevents injection attacks by rejecting all potentially dangerous characters.
+    /// </summary>
+    /// <param name="identifier">The identifier to escape.</param>
+    /// <returns>The validated identifier.</returns>
+    /// <exception cref="ValidationException">Thrown if identifier contains invalid characters.</exception>
     private static string EscapeIdentifier(string identifier)
     {
-        // Wrap identifier in backticks if it contains special characters or spaces
         if (string.IsNullOrWhiteSpace(identifier))
             throw new ValidationException("Identifier cannot be empty.");
 
-        // Reject backticks to prevent SQL injection
-        if (identifier.Contains('`'))
-            throw new ValidationException("Identifier cannot contain backtick characters.");
+        // SECURITY: Use strict allowlist - only permit safe characters
+        // Allowed: alphanumeric (a-z, A-Z, 0-9), underscore (_), hyphen (-)
+        // Reject: backticks, quotes, semicolons, spaces, control characters, etc.
+        foreach (var c in identifier)
+        {
+            bool isValid = char.IsLetterOrDigit(c) || c == '_' || c == '-';
+            if (!isValid)
+            {
+                throw new ValidationException(
+                    $"Identifier '{identifier}' contains invalid character '{c}'. " +
+                    "Only alphanumeric characters, underscore (_), and hyphen (-) are permitted. " +
+                    "This restriction prevents SurrealQL injection attacks.");
+            }
+        }
 
-        // If it already contains special characters, wrap it
-        if (identifier.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
-            return $"`{identifier}`";
-
+        // No escaping needed - identifier contains only safe characters
         return identifier;
     }
 

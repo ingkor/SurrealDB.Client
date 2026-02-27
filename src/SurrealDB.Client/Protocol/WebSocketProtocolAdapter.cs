@@ -109,6 +109,23 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
 
         try
         {
+            // SECURITY FIX: Validate body parameter is well-formed JSON to prevent injection
+            // Vuln 1: JSON Injection via unvalidated body parameter
+            if (body != null)
+            {
+                try
+                {
+                    using var validationDoc = JsonDocument.Parse(body);
+                    // If parsing succeeds, body is valid JSON
+                }
+                catch (JsonException ex)
+                {
+                    throw new ValidationException(
+                        "The 'body' parameter must be valid JSON. Raw interpolation of malformed JSON could enable injection attacks.",
+                        ex);
+                }
+            }
+
             // For WebSocket, we'll send as a JSON-RPC style message
             var requestId = Interlocked.Increment(ref _requestId);
             // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
@@ -156,6 +173,20 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
 
         try
         {
+            // SECURITY FIX: Validate credentials parameter is well-formed JSON to prevent injection
+            // Vuln 2: JSON Injection via unvalidated credentials parameter
+            try
+            {
+                using var validationDoc = JsonDocument.Parse(credentials);
+                // If parsing succeeds, credentials is valid JSON
+            }
+            catch (JsonException ex)
+            {
+                throw new ValidationException(
+                    "The 'credentials' parameter must be valid JSON. Raw interpolation of malformed JSON could enable injection attacks.",
+                    ex);
+            }
+
             var requestId = Interlocked.Increment(ref _requestId);
             // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
             // F10 Fix: Use constant for method name

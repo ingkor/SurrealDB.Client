@@ -97,6 +97,11 @@ public class SurrealDbClientOptions
         if (string.IsNullOrWhiteSpace(Database))
             throw new ValidationException("Database is required and cannot be empty.");
 
+        // SECURITY FIX: P1-4 - Validate namespace and database names using strict allowlist
+        // Only permit alphanumeric characters, underscore, and hyphen to prevent injection
+        ValidateIdentifier(Namespace, "Namespace");
+        ValidateIdentifier(Database, "Database");
+
         if (PoolSize < 1)
             throw new ValidationException("PoolSize must be at least 1.");
 
@@ -108,6 +113,31 @@ public class SurrealDbClientOptions
 
         if (MaxRetryAttempts < 0)
             throw new ValidationException("MaxRetryAttempts cannot be negative.");
+    }
+
+    /// <summary>
+    /// SECURITY: Validates that an identifier contains only safe characters.
+    /// P1-4: No input validation on namespace/database names.
+    ///
+    /// Uses strict allowlist validation to prevent injection attacks.
+    /// Only permits: alphanumeric (a-z, A-Z, 0-9), underscore (_), hyphen (-).
+    /// </summary>
+    /// <param name="identifier">The identifier to validate.</param>
+    /// <param name="parameterName">The parameter name for error messages.</param>
+    /// <exception cref="ValidationException">Thrown if identifier contains invalid characters.</exception>
+    private static void ValidateIdentifier(string identifier, string parameterName)
+    {
+        foreach (var c in identifier)
+        {
+            bool isValid = char.IsLetterOrDigit(c) || c == '_' || c == '-';
+            if (!isValid)
+            {
+                throw new ValidationException(
+                    $"{parameterName} '{identifier}' contains invalid character '{c}'. " +
+                    "Only alphanumeric characters, underscore (_), and hyphen (-) are permitted. " +
+                    "This restriction prevents injection attacks.");
+            }
+        }
     }
 }
 
