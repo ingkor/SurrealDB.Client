@@ -1,5 +1,6 @@
 namespace SurrealDB.Client;
 
+using System.Text.Json;
 using Authentication;
 using Connection;
 using Exceptions;
@@ -72,8 +73,8 @@ public class SurrealDbClient : ISurrealDbClient
             if (string.IsNullOrEmpty(response))
                 throw new ConnectionException("Failed to set namespace and database: empty response");
 
-            // Validate response for errors
-            if (response.Contains("\"error\"", StringComparison.OrdinalIgnoreCase))
+            // F6 Fix: Validate response for errors using proper JSON parsing
+            if (HasRootLevelError(response))
                 throw new ConnectionException($"Failed to set namespace and database: {response}");
 
             _isConnected = true;
@@ -431,6 +432,26 @@ public class SurrealDbClient : ISurrealDbClient
     {
         if (string.IsNullOrWhiteSpace(surrealQL))
             throw new ValidationException("Query cannot be empty.");
+    }
+
+    /// <summary>
+    /// F6 Fix: Checks if a JSON response has a root-level "error" property.
+    /// This prevents false positives from string-based error detection.
+    /// </summary>
+    /// <param name="jsonResponse">The JSON response string.</param>
+    /// <returns>True if the response has a root-level error property; otherwise, false.</returns>
+    private static bool HasRootLevelError(string jsonResponse)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonResponse);
+            return doc.RootElement.TryGetProperty("error", out _);
+        }
+        catch
+        {
+            // If JSON parsing fails, assume no error (or let the caller handle invalid JSON)
+            return false;
+        }
     }
 
     #endregion

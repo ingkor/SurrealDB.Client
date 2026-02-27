@@ -4,6 +4,7 @@ using System.Buffers;
 using System.IO;
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
 using Exceptions;
 
 /// <summary>
@@ -100,7 +101,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         {
             // For WebSocket, we'll send as a JSON-RPC style message
             var requestId = Interlocked.Increment(ref _requestId);
-            var message = $"{{\"id\":{requestId},\"method\":\"{method}\",\"path\":\"{path}\",\"params\":{body ?? "{}"}}}";
+            // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
+            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(method)},\"path\":{JsonSerializer.Serialize(path)},\"params\":{body ?? "{}"}}}";
 
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
@@ -145,7 +147,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         try
         {
             var requestId = Interlocked.Increment(ref _requestId);
-            var message = $"{{\"id\":{requestId},\"method\":\"signin\",\"params\":[{credentials}]}}";
+            // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
+            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize("signin")},\"params\":[{credentials}]}}";
 
             var messageBytes = Encoding.UTF8.GetBytes(message);
 
@@ -161,7 +164,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
             // Receive and accumulate all WebSocket frames until EndOfMessage
             var response = await ReceiveFullMessageAsync(_webSocket, cts.Token);
 
-            if (response.Contains("error", StringComparison.OrdinalIgnoreCase))
+            // F6 Fix: Parse JSON and check for root-level error property instead of string search
+            if (HasRootLevelError(response))
             {
                 throw new AuthenticationException("Authentication failed");
             }
@@ -292,5 +296,25 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(WebSocketProtocolAdapter));
+    }
+
+    /// <summary>
+    /// F6 Fix: Checks if a JSON response has a root-level "error" property.
+    /// This prevents false positives from string-based error detection.
+    /// </summary>
+    /// <param name="jsonResponse">The JSON response string.</param>
+    /// <returns>True if the response has a root-level error property; otherwise, false.</returns>
+    private static bool HasRootLevelError(string jsonResponse)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonResponse);
+            return doc.RootElement.TryGetProperty("error", out _);
+        }
+        catch
+        {
+            // If JSON parsing fails, assume no error (or let the caller handle invalid JSON)
+            return false;
+        }
     }
 }
