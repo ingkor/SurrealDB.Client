@@ -138,21 +138,21 @@ public class WebSocketFrameAccumulationTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task ReceiveFullMessage_PayloadExceeds50MBLimit_ThrowsInvalidOperationException()
+    public async Task ReceiveFullMessage_PayloadExceeds50MBLimit_ThrowsConnectionException()
     {
         // Arrange — simulate a server streaming many small frames that together exceed 50 MB.
         // The stub reports 16 KB per frame (matching the rented buffer). We need
         // 50 MB / 16 KB = 3 200 frames + 1 to cross the limit.
         // To avoid allocating 50 MB in the test itself we use an OverflowingStubWebSocket
         // which returns the same 16 KB buffer repeatedly with EndOfMessage = false until
-        // the size guard fires. Once the guard fires we get InvalidOperationException.
+        // the size guard fires. Once the guard fires we get ConnectionException.
         const int frameSize = 16 * 1024;            // 16 KB per frame
         const int framesToExceedLimit = (50 * 1024 * 1024 / frameSize) + 1; // 3 201 frames
 
         var stub = new InfiniteFrameStubWebSocket(frameSize, framesToExceedLimit);
 
         // Act & Assert
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<ConnectionException>(
             () => WebSocketProtocolAdapter.ReceiveFullMessageAsync(stub, CancellationToken.None));
 
         Assert.Contains("50", ex.Message);
