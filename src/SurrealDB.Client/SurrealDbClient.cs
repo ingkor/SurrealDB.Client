@@ -195,6 +195,14 @@ public class SurrealDbClient : ISurrealDbClient
 
     #region Authentication
 
+    /// <summary>
+    /// SECURITY: Authenticates with username and password.
+    /// P1-6: Credentials passed as strings in public API.
+    ///
+    /// Note: This method accepts plain strings for backward compatibility,
+    /// but internally uses SecureCredentials for secure handling.
+    /// For maximum security, use AuthenticateAsync(SecureCredentials).
+    /// </summary>
     public async Task AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -202,9 +210,13 @@ public class SurrealDbClient : ISurrealDbClient
         if (!_isConnected || _currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
+        // SECURITY: Dispose previous session if it exists
+        _authSession?.Dispose();
+
+        BasicAuthenticationProvider? provider = null;
         try
         {
-            var provider = new BasicAuthenticationProvider(username, password);
+            provider = new BasicAuthenticationProvider(username, password);
             await provider.AuthenticateAsync(_currentConnection, cancellationToken);
 
             _authSession = new AuthenticationSession
@@ -216,8 +228,21 @@ public class SurrealDbClient : ISurrealDbClient
         {
             throw new AuthenticationException("Basic authentication failed", ex);
         }
+        finally
+        {
+            // SECURITY: Always dispose the provider to clear credentials
+            provider?.Dispose();
+        }
     }
 
+    /// <summary>
+    /// SECURITY: Authenticates with a token.
+    /// P1-6: Credentials passed as strings in public API.
+    ///
+    /// Note: This method accepts plain string for backward compatibility,
+    /// but internally uses SecureCredentials for secure handling.
+    /// For maximum security, use AuthenticateAsync(SecureCredentials).
+    /// </summary>
     public async Task AuthenticateAsync(string token, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -225,9 +250,13 @@ public class SurrealDbClient : ISurrealDbClient
         if (!_isConnected || _currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
+        // SECURITY: Dispose previous session if it exists
+        _authSession?.Dispose();
+
+        TokenAuthenticationProvider? provider = null;
         try
         {
-            var provider = new TokenAuthenticationProvider(token);
+            provider = new TokenAuthenticationProvider(token);
             await provider.AuthenticateAsync(_currentConnection, cancellationToken);
 
             _authSession = new AuthenticationSession
@@ -240,15 +269,88 @@ public class SurrealDbClient : ISurrealDbClient
         {
             throw new AuthenticationException("Token authentication failed", ex);
         }
+        finally
+        {
+            // SECURITY: Always dispose the provider to clear credentials
+            provider?.Dispose();
+        }
     }
 
+    /// <summary>
+    /// SECURITY: Authenticates using secure credentials.
+    /// P1-6: New secure API that accepts SecureCredentials instead of plain strings.
+    ///
+    /// This is the preferred method for authentication as it uses SecureString
+    /// for credential storage and automatic cleanup.
+    /// </summary>
+    /// <param name="credentials">Secure credentials object.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task AuthenticateAsync(SecureCredentials credentials, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (!_isConnected || _currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+
+        if (credentials == null)
+            throw new ArgumentNullException(nameof(credentials));
+
+        // SECURITY: Dispose previous session if it exists
+        _authSession?.Dispose();
+
+        IAuthenticationProvider? provider = null;
+        try
+        {
+            // Determine provider type based on credentials
+            if (credentials.Username != null)
+            {
+                provider = new BasicAuthenticationProvider(credentials);
+            }
+            else
+            {
+                provider = new TokenAuthenticationProvider(credentials);
+            }
+
+            await provider.AuthenticateAsync(_currentConnection, cancellationToken);
+
+            _authSession = new AuthenticationSession
+            {
+                Token = credentials.GetTokenString(),
+                EstablishedAt = DateTime.UtcNow
+            };
+        }
+        catch (Exception ex) when (!(ex is SurrealDbException))
+        {
+            throw new AuthenticationException("Authentication failed", ex);
+        }
+        finally
+        {
+            // SECURITY: Always dispose the provider to clear credentials
+            if (provider is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// SECURITY: Logs out and clears the authentication session.
+    /// P1-2: Token not cleared from session after use.
+    /// </summary>
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         try
         {
-            // TODO: Implement logout
+            // SECURITY: Dispose and clear the authentication session
+            if (_authSession != null)
+            {
+                _authSession.Dispose();
+                _authSession = null;
+            }
+
+            // TODO: Send logout command to server
             await Task.CompletedTask;
         }
         catch (Exception ex)
@@ -456,6 +558,20 @@ public class SurrealDbClient : ISurrealDbClient
 
         try
         {
+            // SECURITY: P1-2 - Dispose and clear authentication session
+            if (_authSession != null)
+            {
+                try
+                {
+                    _authSession.Dispose();
+                }
+                catch
+                {
+                    // Suppress errors during disposal
+                }
+                _authSession = null;
+            }
+
             // F3 Fix: Release current connection if still held
             if (_currentConnection != null && _connectionPool != null)
             {

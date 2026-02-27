@@ -44,6 +44,7 @@ public interface ISurrealDbClient : IAsyncDisposable
 
     /// <summary>
     /// Authenticates with the database using credentials.
+    /// SECURITY: For backward compatibility. Use AuthenticateAsync(SecureCredentials) for maximum security.
     /// </summary>
     /// <param name="username">Username.</param>
     /// <param name="password">Password.</param>
@@ -54,6 +55,7 @@ public interface ISurrealDbClient : IAsyncDisposable
 
     /// <summary>
     /// Authenticates with the database using a token.
+    /// SECURITY: For backward compatibility. Use AuthenticateAsync(SecureCredentials) for maximum security.
     /// </summary>
     /// <param name="token">Authentication token.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -62,7 +64,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     Task AuthenticateAsync(string token, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Logs out from the database.
+    /// Logs out from the database and clears authentication session.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when logout is complete.</returns>

@@ -17,40 +17,52 @@ public interface IAuthenticationProvider
 }
 
 /// <summary>
-/// Username/password authentication provider.
+/// SECURITY: Username/password authentication provider with secure credential handling.
+/// P1-1, P1-6: Credentials exposed in memory - no secure clearing.
+///
+/// Uses SecureCredentials for encrypted password storage.
 /// </summary>
-public class BasicAuthenticationProvider : IAuthenticationProvider
+public class BasicAuthenticationProvider : IAuthenticationProvider, IDisposable
 {
-    private readonly string _username;
-    private readonly string _password;
+    private SecureCredentials? _credentials;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of BasicAuthenticationProvider.
+    /// SECURITY: Stores credentials securely using SecureString internally.
     /// </summary>
     /// <param name="username">Username.</param>
-    /// <param name="password">Password.</param>
+    /// <param name="password">Password (will be encrypted in memory).</param>
     public BasicAuthenticationProvider(string username, string password)
     {
-        if (string.IsNullOrWhiteSpace(username))
-            throw new ValidationException("Username cannot be empty.");
+        _credentials = SecureCredentials.FromUsernamePassword(username, password);
+    }
 
-        if (string.IsNullOrWhiteSpace(password))
-            throw new ValidationException("Password cannot be empty.");
-
-        _username = username;
-        _password = password;
+    /// <summary>
+    /// Initializes with pre-secured credentials (advanced usage).
+    /// </summary>
+    /// <param name="credentials">Secure credentials object.</param>
+    public BasicAuthenticationProvider(SecureCredentials credentials)
+    {
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
     }
 
     public async Task AuthenticateAsync(
         IProtocolAdapter adapter,
         CancellationToken cancellationToken = default)
     {
+        if (_disposed || _credentials == null)
+            throw new ObjectDisposedException(nameof(BasicAuthenticationProvider));
+
         try
         {
-            var credentials = System.Text.Json.JsonSerializer.Serialize(
-                new { user = _username, pass = _password });
+            // SECURITY: Get credentials JSON, use immediately, then it goes out of scope
+            var credentialsJson = _credentials.ToJsonCredentials();
 
-            var response = await adapter.AuthenticateAsync(credentials, cancellationToken);
+            var response = await adapter.AuthenticateAsync(credentialsJson, cancellationToken);
+
+            // The credentialsJson string is now out of scope and eligible for GC
+            // We cannot force clear it as strings are immutable, but we minimize exposure time
 
             if (string.IsNullOrEmpty(response))
                 throw new AuthenticationException("Empty response from authentication.");
@@ -79,37 +91,66 @@ public class BasicAuthenticationProvider : IAuthenticationProvider
             throw new AuthenticationException("Basic authentication failed", ex);
         }
     }
+
+    /// <summary>
+    /// SECURITY: Disposes and clears credentials from memory.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _credentials?.Dispose();
+        _credentials = null;
+        _disposed = true;
+    }
 }
 
 /// <summary>
-/// Token-based authentication provider.
+/// SECURITY: Token-based authentication provider with secure token handling.
+/// P1-1, P1-6: Token stored as plain string - cannot be securely cleared from memory.
+///
+/// Uses SecureCredentials for encrypted token storage.
 /// </summary>
-public class TokenAuthenticationProvider : IAuthenticationProvider
+public class TokenAuthenticationProvider : IAuthenticationProvider, IDisposable
 {
-    private readonly string _token;
+    private SecureCredentials? _credentials;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of TokenAuthenticationProvider.
+    /// SECURITY: Stores token securely using SecureString internally.
     /// </summary>
-    /// <param name="token">Authentication token.</param>
+    /// <param name="token">Authentication token (will be encrypted in memory).</param>
     public TokenAuthenticationProvider(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
-            throw new ValidationException("Token cannot be empty.");
+        _credentials = SecureCredentials.FromToken(token);
+    }
 
-        _token = token;
+    /// <summary>
+    /// Initializes with pre-secured credentials (advanced usage).
+    /// </summary>
+    /// <param name="credentials">Secure credentials object.</param>
+    public TokenAuthenticationProvider(SecureCredentials credentials)
+    {
+        _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
     }
 
     public async Task AuthenticateAsync(
         IProtocolAdapter adapter,
         CancellationToken cancellationToken = default)
     {
+        if (_disposed || _credentials == null)
+            throw new ObjectDisposedException(nameof(TokenAuthenticationProvider));
+
         try
         {
-            var credentials = System.Text.Json.JsonSerializer.Serialize(
-                new { token = _token });
+            // SECURITY: Get credentials JSON, use immediately, then it goes out of scope
+            var credentialsJson = _credentials.ToJsonCredentials();
 
-            var response = await adapter.AuthenticateAsync(credentials, cancellationToken);
+            var response = await adapter.AuthenticateAsync(credentialsJson, cancellationToken);
+
+            // The credentialsJson string is now out of scope and eligible for GC
 
             if (string.IsNullOrEmpty(response))
                 throw new AuthenticationException("Empty response from token authentication.");
@@ -144,17 +185,46 @@ public class TokenAuthenticationProvider : IAuthenticationProvider
             throw new AuthenticationException("Token authentication failed", ex);
         }
     }
+
+    /// <summary>
+    /// SECURITY: Disposes and clears token from memory.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _credentials?.Dispose();
+        _credentials = null;
+        _disposed = true;
+    }
 }
 
 /// <summary>
-/// Session management for authenticated connections.
+/// SECURITY: Session management for authenticated connections with secure token handling.
+/// P1-2: Token not cleared from session after use.
+///
+/// Implements IDisposable to ensure tokens are cleared when session ends.
 /// </summary>
-public class AuthenticationSession
+public class AuthenticationSession : IDisposable
 {
+    private string? _token;
+    private bool _disposed;
+
     /// <summary>
     /// Gets or sets the authentication token.
+    /// SECURITY: Token is cleared on disposal to prevent memory exposure.
     /// </summary>
-    public string? Token { get; set; }
+    public string? Token
+    {
+        get => _disposed ? null : _token;
+        set
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(AuthenticationSession));
+            _token = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets when the session was established.
@@ -169,11 +239,42 @@ public class AuthenticationSession
     /// <summary>
     /// Gets whether the session is valid.
     /// </summary>
-    public bool IsValid => !string.IsNullOrEmpty(Token) &&
+    public bool IsValid => !_disposed &&
+                           !string.IsNullOrEmpty(_token) &&
                            (ExpiresAt == null || DateTime.UtcNow < ExpiresAt);
 
     /// <summary>
     /// Gets whether the session is expired.
     /// </summary>
-    public bool IsExpired => ExpiresAt != null && DateTime.UtcNow >= ExpiresAt;
+    public bool IsExpired => _disposed ||
+                             (ExpiresAt != null && DateTime.UtcNow >= ExpiresAt);
+
+    /// <summary>
+    /// SECURITY: Explicitly clears the authentication token from memory.
+    /// P1-2: Token not cleared from session after use.
+    ///
+    /// This should be called on logout or when the session is no longer needed.
+    /// </summary>
+    public void ClearToken()
+    {
+        if (_token != null)
+        {
+            // Best effort to clear string from memory
+            // .NET strings are immutable, but we null the reference
+            _token = null;
+        }
+    }
+
+    /// <summary>
+    /// SECURITY: Disposes the session and clears sensitive data.
+    /// P1-2: Implements IDisposable for proper resource cleanup.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        ClearToken();
+        _disposed = true;
+    }
 }
