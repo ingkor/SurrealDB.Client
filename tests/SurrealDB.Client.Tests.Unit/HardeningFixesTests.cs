@@ -2,7 +2,6 @@ using System.Reflection;
 using Xunit;
 using Moq;
 using SurrealDB.Client.Connection;
-using SurrealDB.Client.Protocol;
 
 namespace SurrealDB.Client.Tests.Unit;
 
@@ -311,8 +310,8 @@ public class HardeningFixesTests
     [Fact]
     public void F10_WebSocketProtocolAdapter_ProtocolMethods_QueryConstant_IsDefined()
     {
-        // Arrange & Act - Check WebSocketProtocolAdapter namespace for ProtocolMethods
-        var protocolMethodsType = typeof(WebSocketProtocolAdapter)
+        // Arrange & Act - Check SurrealDbClient assembly for ProtocolMethods in Protocol namespace
+        var protocolMethodsType = typeof(SurrealDbClient)
             .Assembly
             .GetTypes()
             .FirstOrDefault(t => t.Name == "ProtocolMethods" && t.Namespace == "SurrealDB.Client.Protocol");
@@ -331,7 +330,7 @@ public class HardeningFixesTests
     public void F10_WebSocketProtocolAdapter_ProtocolMethods_SignInConstant_IsDefined()
     {
         // Arrange & Act
-        var protocolMethodsType = typeof(WebSocketProtocolAdapter)
+        var protocolMethodsType = typeof(SurrealDbClient)
             .Assembly
             .GetTypes()
             .FirstOrDefault(t => t.Name == "ProtocolMethods" && t.Namespace == "SurrealDB.Client.Protocol");
@@ -350,7 +349,7 @@ public class HardeningFixesTests
     public void F10_WebSocketProtocolAdapter_ProtocolMethods_PingConstant_IsDefined()
     {
         // Arrange & Act
-        var protocolMethodsType = typeof(WebSocketProtocolAdapter)
+        var protocolMethodsType = typeof(SurrealDbClient)
             .Assembly
             .GetTypes()
             .FirstOrDefault(t => t.Name == "ProtocolMethods" && t.Namespace == "SurrealDB.Client.Protocol");
