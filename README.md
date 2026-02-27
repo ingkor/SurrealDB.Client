@@ -18,40 +18,6 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 | **[docs/consumer/SECURITY.md](docs/consumer/SECURITY.md)** | Security best practices |
 | **[docs/consumer/CHANGELOG.md](docs/consumer/CHANGELOG.md)** | Version history and upgrade guide |
 
-## Technical Documentation
-
-**For development reference:**
-
-### Core Architecture (A Grade)
-| Document | Focus |
-|----------|-------|
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Complete architectural design, EF Core comparison, roadmap |
-| **[STATE_MANAGEMENT.md](STATE_MANAGEMENT.md)** | Entity states, change tracking, session lifecycle |
-| **[QUERY_COMPOSITION.md](QUERY_COMPOSITION.md)** | IQueryable API, query building, expression translation |
-| **[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)** | Key design choices and rationale |
-| **[RISK_ASSESSMENT.md](RISK_ASSESSMENT.md)** | Risk analysis and mitigation strategies |
-| **[LOADING_PATTERNS.md](LOADING_PATTERNS.md)** | Include/Lazy/Explicit loading patterns |
-| **[INTERCEPTORS.md](INTERCEPTORS.md)** | Middleware and query interception |
-| **[QUERY_CACHING.md](QUERY_CACHING.md)** | Multi-level caching strategies |
-| **[DIAGNOSTICS.md](DIAGNOSTICS.md)** | Monitoring, profiling, observability |
-
-### Enterprise Features (S Grade)
-| Document | Focus |
-|----------|-------|
-| **[MIGRATIONS.md](MIGRATIONS.md)** | Schema versioning, migrations, rollback |
-| **[PLUGINS.md](PLUGINS.md)** | Plugin architecture and extensibility |
-| **[DATALOADER.md](DATALOADER.md)** | Batch loading, N+1 prevention |
-| **[EVENT_SOURCING.md](EVENT_SOURCING.md)** | Event sourcing, event replay, snapshots |
-
-### Execution & Development
-| Document | Focus |
-|----------|-------|
-| **[BACKLOG.md](BACKLOG.md)** | Complete task list and implementation details |
-| **[EXECUTION_CHECKLIST.md](EXECUTION_CHECKLIST.md)** | Quick reference with checkboxes |
-| **[EXECUTION_SUMMARY.md](EXECUTION_SUMMARY.md)** | Development plan and timeline |
-| **[DEVELOPER_ASSIGNMENT.md](DEVELOPER_ASSIGNMENT.md)** | Developer instructions and test matrix |
-| **[REVIEW_WORKFLOW.md](REVIEW_WORKFLOW.md)** | Code review pipeline and approval criteria |
-| **[docs/roles/](docs/roles/)** | Role-based guidance for team members
 
 ## Features
 
@@ -475,14 +441,6 @@ catch (SurrealDbException ex)
 ```
 
 ---
-
-## Complete Documentation
-
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Architectural design, EF Core comparison, roadmap, risk assessment
-- **[STATE_MANAGEMENT.md](STATE_MANAGEMENT.md)** - Entity states, change tracking, session lifecycle, performance
-- **[QUERY_COMPOSITION.md](QUERY_COMPOSITION.md)** - IQueryable API, expression translation, optimization patterns
-- **[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)** - Key architectural decisions and rationale
-- **[RISK_ASSESSMENT.md](RISK_ASSESSMENT.md)** - Comprehensive risk analysis and mitigation
 
 ---
 
