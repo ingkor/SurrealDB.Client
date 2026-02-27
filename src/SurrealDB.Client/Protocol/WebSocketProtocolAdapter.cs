@@ -1,5 +1,7 @@
 namespace SurrealDB.Client.Protocol;
 
+using System.Buffers;
+using System.IO;
 using System.Net.WebSockets;
 using System.Text;
 
@@ -13,6 +15,11 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
     private ClientWebSocket? _webSocket;
     private bool _disposed;
     private int _requestId = 0;
+
+    /// <summary>
+    /// Maximum allowed response size (50 MB). Prevents OOM attacks from oversized messages.
+    /// </summary>
+    private const int MaxResponseSizeBytes = 50 * 1024 * 1024;
 
     public bool IsConnected => _webSocket?.State == WebSocketState.Open;
 
@@ -105,14 +112,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 true,
                 cts.Token);
 
-            // Receive response
-            var buffer = new byte[1024 * 4];
-            var result = await _webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer),
-                cts.Token);
-
-            var response = Encoding.UTF8.GetString(buffer, 0, result.Count);
-            return response;
+            // Receive and accumulate all WebSocket frames until EndOfMessage
+            return await ReceiveFullMessageAsync(_webSocket, cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -156,12 +157,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 true,
                 cts.Token);
 
-            var buffer = new byte[1024 * 4];
-            var result = await _webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer),
-                cts.Token);
-
-            var response = Encoding.UTF8.GetString(buffer, 0, result.Count);
+            // Receive and accumulate all WebSocket frames until EndOfMessage
+            var response = await ReceiveFullMessageAsync(_webSocket, cts.Token);
 
             if (response.Contains("error", StringComparison.OrdinalIgnoreCase))
             {
@@ -199,12 +196,10 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 true,
                 cts.Token);
 
-            var buffer = new byte[1024];
-            var result = await _webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer),
-                cts.Token);
-
-            return result.MessageType == WebSocketMessageType.Text;
+            // Use the same receive path as all other methods to handle multi-frame responses
+            // If server sends multi-frame pong, single-frame receive would leave stale data
+            var response = await ReceiveFullMessageAsync(_webSocket, cts.Token);
+            return !string.IsNullOrEmpty(response);
         }
         catch
         {
@@ -234,6 +229,61 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         catch
         {
             // Suppress errors during disposal
+        }
+    }
+
+    /// <summary>
+    /// Receives a complete logical WebSocket message by accumulating frames until
+    /// <see cref="WebSocketReceiveResult.EndOfMessage"/> is <see langword="true"/>.
+    /// Uses <see cref="ArrayPool{T}"/> for the per-frame read buffer and a
+    /// <see cref="MemoryStream"/> to accumulate data across frames. Enforces a 50 MB
+    /// size cap to guard against OOM attacks.
+    /// </summary>
+    /// <param name="webSocket">The WebSocket to read from.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The full decoded UTF-8 response string.</returns>
+    /// <exception cref="ConnectionException">
+    /// Thrown when the accumulated message exceeds <see cref="MaxResponseSizeBytes"/>.
+    /// </exception>
+    internal static async Task<string> ReceiveFullMessageAsync(
+        WebSocket webSocket,
+        CancellationToken cancellationToken)
+    {
+        // Rent a 16 KB frame buffer from the shared pool.
+        var frameBuffer = ArrayPool<byte>.Shared.Rent(16 * 1024);
+        try
+        {
+            // Pre-size to 16 KB to avoid multiple reallocations for typical messages
+            using var ms = new MemoryStream(16 * 1024);
+
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await webSocket.ReceiveAsync(
+                    new ArraySegment<byte>(frameBuffer),
+                    cancellationToken);
+
+                if (ms.Length + result.Count > MaxResponseSizeBytes)
+                {
+                    throw new ConnectionException(
+                        $"WebSocket response exceeded the maximum allowed size of {MaxResponseSizeBytes / (1024 * 1024)} MB. " +
+                        "Possible OOM attack or unexpectedly large payload.");
+                }
+
+                ms.Write(frameBuffer, 0, result.Count);
+
+            } while (!result.EndOfMessage);
+
+            // Decode directly from the underlying buffer to avoid an extra allocation
+            // that ms.ToArray() would introduce.
+            return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+        }
+        finally
+        {
+            // ALWAYS return the rented buffer — even on exception, cancellation, or
+            // size-limit violation — to prevent ArrayPool leaks.
+            // Clear sensitive data (auth tokens, user data) from the buffer.
+            ArrayPool<byte>.Shared.Return(frameBuffer, clearArray: true);
         }
     }
 
