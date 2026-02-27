@@ -1,6 +1,7 @@
 namespace SurrealDB.Client.Connection;
 
 using System.Collections.Concurrent;
+using Exceptions;
 using Protocol;
 
 /// <summary>
@@ -227,14 +228,31 @@ internal class ConnectionPool : IConnectionPool
 
     public PoolStatistics GetStatistics()
     {
+        // Snapshot under lock, compute outside to minimize lock duration
+        PooledConnection[] snapshot;
+        int totalCount;
+        lock (_allConnections)
+        {
+            totalCount = _allConnections.Count;
+            snapshot = _allConnections.ToArray();
+        }
+
+        // Compute InUse count outside the lock
+        int inUseCount = 0;
+        foreach (var conn in snapshot)
+        {
+            if (conn.InUse)
+                inUseCount++;
+        }
+
         return new PoolStatistics
         {
-            TotalConnections = _allConnections.Count,
+            TotalConnections = totalCount,
             AvailableConnections = _availableConnections.Count,
-            InUseConnections = _allConnections.Count(c => c.InUse),
-            TotalAcquisitions = _totalAcquisitions,
-            TotalReleases = _totalReleases,
-            FailedHealthChecks = _failedHealthChecks
+            InUseConnections = inUseCount,
+            TotalAcquisitions = Interlocked.Read(ref _totalAcquisitions),
+            TotalReleases = Interlocked.Read(ref _totalReleases),
+            FailedHealthChecks = Interlocked.Read(ref _failedHealthChecks)
         };
     }
 

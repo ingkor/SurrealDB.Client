@@ -1,4 +1,5 @@
 using Xunit;
+using SurrealDB.Client.Exceptions;
 
 namespace SurrealDB.Client.Tests.Unit;
 
@@ -28,6 +29,8 @@ public class SurrealDbClientOptionsTests
         var options = new SurrealDbClientOptions
         {
             ConnectionString = "surreal://localhost:8000",
+            Namespace = "test_ns",
+            Database = "test_db",
             PoolSize = 5
         };
 
@@ -94,5 +97,95 @@ public class SurrealDbClientOptionsTests
         // Act & Assert
         Assert.Equal(0, (int)SerializerType.SystemTextJson);
         Assert.Equal(1, (int)SerializerType.NewtonsoftJson);
+    }
+
+    [Fact]
+    public void Options_Validate_WithoutNamespace_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Database = "test_db",
+            Namespace = null
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void Options_Validate_WithEmptyNamespace_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Database = "test_db",
+            Namespace = ""
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void Options_Validate_WithWhitespaceNamespace_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Database = "test_db",
+            Namespace = "   "
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void Options_Validate_WithoutDatabase_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Namespace = "test_ns",
+            Database = null
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void Options_Validate_WithEmptyDatabase_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Namespace = "test_ns",
+            Database = ""
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
+    }
+
+    [Fact]
+    public void Options_Validate_WithWhitespaceDatabase_Throws()
+    {
+        // Arrange
+        var options = new SurrealDbClientOptions
+        {
+            ConnectionString = "surreal://localhost:8000",
+            Namespace = "test_ns",
+            Database = "   "
+        };
+
+        // Act & Assert
+        Assert.Throws<ValidationException>(() => options.Validate());
     }
 }

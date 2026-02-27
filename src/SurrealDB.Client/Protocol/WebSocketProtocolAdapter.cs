@@ -4,6 +4,7 @@ using System.Buffers;
 using System.IO;
 using System.Net.WebSockets;
 using System.Text;
+using Exceptions;
 
 /// <summary>
 /// WebSocket protocol adapter for SurrealDB communication.

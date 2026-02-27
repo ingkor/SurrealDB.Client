@@ -1,5 +1,6 @@
 namespace SurrealDB.Client.Authentication;
 
+using Exceptions;
 using Protocol;
 
 /// <summary>
@@ -54,7 +55,24 @@ public class BasicAuthenticationProvider : IAuthenticationProvider
             if (string.IsNullOrEmpty(response))
                 throw new AuthenticationException("Empty response from authentication.");
 
-            // TODO: Parse response and validate token
+            // Validate response is valid JSON
+            try
+            {
+                var jsonDoc = System.Text.Json.JsonDocument.Parse(response);
+                var root = jsonDoc.RootElement;
+
+                // Response should contain a token
+                if (!root.TryGetProperty("token", out var tokenElement))
+                    throw new AuthenticationException("No token in authentication response.");
+
+                var token = tokenElement.GetString();
+                if (string.IsNullOrEmpty(token))
+                    throw new AuthenticationException("Empty token in authentication response.");
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                throw new AuthenticationException("Invalid JSON in authentication response", ex);
+            }
         }
         catch (Exception ex) when (!(ex is SurrealDbException))
         {
@@ -96,7 +114,30 @@ public class TokenAuthenticationProvider : IAuthenticationProvider
             if (string.IsNullOrEmpty(response))
                 throw new AuthenticationException("Empty response from token authentication.");
 
-            // TODO: Validate response
+            // Validate response is valid JSON
+            try
+            {
+                var jsonDoc = System.Text.Json.JsonDocument.Parse(response);
+                var root = jsonDoc.RootElement;
+
+                // Check for error field first
+                if (root.TryGetProperty("error", out var errorProp))
+                    throw new AuthenticationException($"Token auth failed: {errorProp.GetString()}");
+
+                // Response should indicate success (common pattern: { "status": "ok" } or similar)
+                if (root.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    // Accept any successful JSON response as valid for token auth
+                    // The token was already provided by the client
+                    return;
+                }
+
+                throw new AuthenticationException("Invalid response format from token authentication.");
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                throw new AuthenticationException("Invalid JSON in authentication response", ex);
+            }
         }
         catch (Exception ex) when (!(ex is SurrealDbException))
         {

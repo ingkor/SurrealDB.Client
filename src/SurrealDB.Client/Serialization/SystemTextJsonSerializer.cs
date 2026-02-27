@@ -2,6 +2,7 @@ namespace SurrealDB.Client.Serialization;
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Exceptions;
 
 /// <summary>
 /// System.Text.Json serializer implementation.

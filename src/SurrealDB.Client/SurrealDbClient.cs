@@ -2,6 +2,7 @@ namespace SurrealDB.Client;
 
 using Authentication;
 using Connection;
+using Exceptions;
 using Protocol;
 using Serialization;
 
@@ -63,6 +64,17 @@ public class SurrealDbClient : ISurrealDbClient
 
             // Verify connection
             await _currentConnection.ConnectAsync(cancellationToken);
+
+            // Set namespace and database for this connection
+            var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
+            var response = await _currentConnection.SendAsync("QUERY", useNsDbStatement, null, cancellationToken);
+
+            if (string.IsNullOrEmpty(response))
+                throw new ConnectionException("Failed to set namespace and database: empty response");
+
+            // Validate response for errors
+            if (response.Contains("\"error\"", StringComparison.OrdinalIgnoreCase))
+                throw new ConnectionException($"Failed to set namespace and database: {response}");
 
             _isConnected = true;
         }
@@ -384,6 +396,23 @@ public class SurrealDbClient : ISurrealDbClient
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SurrealDbClient));
+    }
+
+    private static string EscapeIdentifier(string identifier)
+    {
+        // Wrap identifier in backticks if it contains special characters or spaces
+        if (string.IsNullOrWhiteSpace(identifier))
+            throw new ValidationException("Identifier cannot be empty.");
+
+        // Reject backticks to prevent SQL injection
+        if (identifier.Contains('`'))
+            throw new ValidationException("Identifier cannot contain backtick characters.");
+
+        // If it already contains special characters, wrap it
+        if (identifier.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
+            return $"`{identifier}`";
+
+        return identifier;
     }
 
     private static void ValidateTable(string table)
