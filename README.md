@@ -3,11 +3,26 @@
 [![NuGet](https://img.shields.io/nuget/v/SurrealDB.Client.svg)](https://www.nuget.org/packages/SurrealDB.Client)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A modern, production-grade .NET/C# client library for [SurrealDB](https://surrealdb.com/) with Entity Framework Core-inspired state management, composable queries, and real-time subscriptions.
+A modern, production-grade .NET/C# client library for [SurrealDB](https://surrealdb.com/) with connection pooling, typed exception handling, and flexible protocol support (HTTP and WebSocket).
 
-## 📚 Quick Navigation
+## Consumer Documentation
 
-### Core Documentation (A Grade)
+**For package users, start here:**
+
+| Document | Purpose |
+|----------|---------|
+| **[docs/consumer/README.md](docs/consumer/README.md)** | Main entry point - What is SurrealDB.Client? |
+| **[docs/consumer/GETTING_STARTED.md](docs/consumer/GETTING_STARTED.md)** | Installation, connection, first queries |
+| **[docs/consumer/API_REFERENCE.md](docs/consumer/API_REFERENCE.md)** | Complete API documentation |
+| **[docs/consumer/EXAMPLES.md](docs/consumer/EXAMPLES.md)** | Real-world code examples |
+| **[docs/consumer/SECURITY.md](docs/consumer/SECURITY.md)** | Security best practices |
+| **[docs/consumer/CHANGELOG.md](docs/consumer/CHANGELOG.md)** | Version history and upgrade guide |
+
+## Internal Documentation
+
+**For maintainers and contributors only:**
+
+### Core Architecture (A Grade)
 | Document | Focus |
 |----------|-------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Complete architectural design, EF Core comparison, roadmap |
@@ -20,14 +35,23 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 | **[QUERY_CACHING.md](QUERY_CACHING.md)** | Multi-level caching strategies |
 | **[DIAGNOSTICS.md](DIAGNOSTICS.md)** | Monitoring, profiling, observability |
 
-### S-Grade Documentation (Enterprise Features)
+### Enterprise Features (S Grade)
 | Document | Focus |
 |----------|-------|
 | **[MIGRATIONS.md](MIGRATIONS.md)** | Schema versioning, migrations, rollback |
-| **[SECURITY.md](SECURITY.md)** | RLS, encryption, audit trails, compliance |
 | **[PLUGINS.md](PLUGINS.md)** | Plugin architecture and extensibility |
 | **[DATALOADER.md](DATALOADER.md)** | Batch loading, N+1 prevention |
 | **[EVENT_SOURCING.md](EVENT_SOURCING.md)** | Event sourcing, event replay, snapshots |
+
+### Execution & Development
+| Document | Focus |
+|----------|-------|
+| **[BACKLOG.md](BACKLOG.md)** | Complete task list and implementation details |
+| **[EXECUTION_CHECKLIST.md](EXECUTION_CHECKLIST.md)** | Quick reference with checkboxes |
+| **[EXECUTION_SUMMARY.md](EXECUTION_SUMMARY.md)** | Development plan and timeline |
+| **[DEVELOPER_ASSIGNMENT.md](DEVELOPER_ASSIGNMENT.md)** | Developer instructions and test matrix |
+| **[REVIEW_WORKFLOW.md](REVIEW_WORKFLOW.md)** | Code review pipeline and approval criteria |
+| **[docs/roles/](docs/roles/)** | Role-based guidance for team members
 
 ## Features
 
