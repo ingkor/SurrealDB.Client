@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
+using SurrealDB.Client.Exceptions;
 using SurrealDB.Client.Protocol;
 using Xunit;
 
@@ -49,9 +50,9 @@ public class WebSocketFrameAccumulationTests
 
         var frames = new[]
         {
-            new StubFrame(Encoding.UTF8.GetBytes(part1), endOfMessage: false),
-            new StubFrame(Encoding.UTF8.GetBytes(part2), endOfMessage: false),
-            new StubFrame(Encoding.UTF8.GetBytes(part3), endOfMessage: true),
+            new StubFrame(Encoding.UTF8.GetBytes(part1), EndOfMessage: false),
+            new StubFrame(Encoding.UTF8.GetBytes(part2), EndOfMessage: false),
+            new StubFrame(Encoding.UTF8.GetBytes(part3), EndOfMessage: true),
         };
 
         var stub = new StubWebSocket(frames);
@@ -94,7 +95,7 @@ public class WebSocketFrameAccumulationTests
         var frames = Enumerable.Range(1, 5)
             .Select(i => new StubFrame(
                 Encoding.UTF8.GetBytes($"chunk{i}"),
-                endOfMessage: i == 5))
+                EndOfMessage: i == 5))
             .ToArray();
 
         var stub = new StubWebSocket(frames);
@@ -217,7 +218,7 @@ internal sealed class StubWebSocket : WebSocket
     public static StubWebSocket SingleFrame(string payload)
     {
         var data = Encoding.UTF8.GetBytes(payload);
-        return new StubWebSocket(new[] { new StubFrame(data, endOfMessage: true) });
+        return new StubWebSocket(new[] { new StubFrame(data, EndOfMessage: true) });
     }
 
     public override ValueTask<ValueWebSocketReceiveResult> ReceiveAsync(

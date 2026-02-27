@@ -100,10 +100,10 @@ public class ExceptionTests
     public void TimeoutException_IsCreated()
     {
         // Arrange & Act
-        var exception = new TimeoutException("Operation timed out");
+        var exception = new Exceptions.TimeoutException("Operation timed out");
 
         // Assert
         Assert.NotNull(exception);
-        Assert.IsType<TimeoutException>(exception);
+        Assert.IsType<Exceptions.TimeoutException>(exception);
     }
 }

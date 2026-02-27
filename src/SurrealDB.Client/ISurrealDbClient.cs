@@ -22,7 +22,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when the connection is established.</returns>
-    /// <exception cref="ConnectionException">Thrown if connection fails.</exception>
+    /// <exception cref="Exceptions.ConnectionException">Thrown if connection fails.</exception>
     Task ConnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -50,7 +50,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="password">Password.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when authentication is complete.</returns>
-    /// <exception cref="AuthenticationException">Thrown if authentication fails.</exception>
+    /// <exception cref="Exceptions.AuthenticationException">Thrown if authentication fails.</exception>
     Task AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -60,7 +60,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="token">Authentication token.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when authentication is complete.</returns>
-    /// <exception cref="AuthenticationException">Thrown if authentication fails.</exception>
+    /// <exception cref="Exceptions.AuthenticationException">Thrown if authentication fails.</exception>
     Task AuthenticateAsync(string token, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -82,7 +82,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="data">The data to create.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created entity.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<T> CreateAsync<T>(string table, T data, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -93,7 +93,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="data">The data to create.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created entities.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<IEnumerable<T>> CreateAsync<T>(string table, IEnumerable<T> data, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -103,7 +103,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="recordId">The record ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The entity or null if not found.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -113,7 +113,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="table">The table name.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The entities.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<IEnumerable<T>> SelectAsync<T>(string table, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -124,7 +124,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="data">The updated data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The updated entity.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<T> UpdateAsync<T>(string recordId, T data, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -133,7 +133,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="recordId">The record ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes when the deletion is complete.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task DeleteAsync(string recordId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -144,7 +144,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="data">The data to upsert.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The upserted entity.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<T> UpsertAsync<T>(string recordId, T data, CancellationToken cancellationToken = default);
 
     #endregion
@@ -158,7 +158,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="parameters">Query parameters.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The raw query result.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<QueryResult> QueryAsync(
         string surrealQL,
         Dictionary<string, object>? parameters = null,
@@ -172,7 +172,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="parameters">Query parameters.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The query results.</returns>
-    /// <exception cref="QueryException">Thrown if the query fails.</exception>
+    /// <exception cref="Exceptions.QueryException">Thrown if the query fails.</exception>
     Task<IEnumerable<T>> QueryAsync<T>(
         string surrealQL,
         Dictionary<string, object>? parameters = null,

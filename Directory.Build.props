@@ -12,9 +12,9 @@
     <PackageTags>surrealdb;database;client;orm;ef-core;query-composition</PackageTags>
 
     <!-- Version -->
-    <VersionPrefix>0.1.0</VersionPrefix>
-    <VersionSuffix>beta-1</VersionSuffix>
-    <InformationalVersion>$(VersionPrefix)-$(VersionSuffix)</InformationalVersion>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionSuffix></VersionSuffix>
+    <InformationalVersion>$(VersionPrefix)</InformationalVersion>
 
     <!-- Build Configuration -->
     <LangVersion>latest</LangVersion>
@@ -40,9 +40,7 @@
   </PropertyGroup>
 
   <!-- NuGet Dependency Versions -->
-  <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="8.0.0" />
-  </ItemGroup>
+  <!-- Removed explicit System.Text.Json version - using framework-provided version to avoid CVEs -->
 
   <!-- Test Project Configuration -->
   <PropertyGroup Condition="'$(IsTestProject)' == 'true'">

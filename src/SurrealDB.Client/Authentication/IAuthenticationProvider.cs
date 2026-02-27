@@ -47,6 +47,11 @@ public class BasicAuthenticationProvider : IAuthenticationProvider, IDisposable
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
     }
 
+    /// <summary>
+    /// Authenticates using the provided protocol adapter.
+    /// </summary>
+    /// <param name="adapter">The protocol adapter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task AuthenticateAsync(
         IProtocolAdapter adapter,
         CancellationToken cancellationToken = default)
@@ -136,6 +141,11 @@ public class TokenAuthenticationProvider : IAuthenticationProvider, IDisposable
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
     }
 
+    /// <summary>
+    /// Authenticates using the provided protocol adapter.
+    /// </summary>
+    /// <param name="adapter">The protocol adapter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task AuthenticateAsync(
         IProtocolAdapter adapter,
         CancellationToken cancellationToken = default)

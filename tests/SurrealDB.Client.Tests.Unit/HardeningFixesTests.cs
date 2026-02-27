@@ -2,6 +2,7 @@ using System.Reflection;
 using Xunit;
 using Moq;
 using SurrealDB.Client.Connection;
+using SurrealDB.Client.Protocol;
 
 namespace SurrealDB.Client.Tests.Unit;
 

@@ -8,20 +8,19 @@ using Protocol;
 using Serialization;
 
 /// <summary>
-/// F10 Fix: Protocol method constants to avoid magic strings.
-/// </summary>
-internal static class ProtocolMethods
-{
-    public const string Query = "QUERY";
-    public const string SignIn = "signin";
-    public const string Ping = "ping";
-}
-
-/// <summary>
 /// Main SurrealDB client implementation.
 /// </summary>
 public class SurrealDbClient : ISurrealDbClient
 {
+    /// <summary>
+    /// F10 Fix: Protocol method constants to avoid magic strings.
+    /// </summary>
+    internal static class ProtocolMethods
+    {
+        public const string Query = "QUERY";
+        public const string SignIn = "signin";
+        public const string Ping = "ping";
+    }
     private readonly SurrealDbClientOptions _options;
     private readonly ISerializer _serializer;
     private readonly SemaphoreSlim _connectLock = new SemaphoreSlim(1, 1); // F4: Prevent concurrent ConnectAsync
@@ -92,7 +91,8 @@ public class SurrealDbClient : ISurrealDbClient
 
                 // Set namespace and database for this connection
                 // F10 Fix: Use constant for QUERY method
-                var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
+                // Namespace and Database are guaranteed non-null by options.Validate()
+                var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace!)} DB {EscapeIdentifier(_options.Database!)};";
                 var response = await _currentConnection.SendAsync(ProtocolMethods.Query, useNsDbStatement, null, cancellationToken);
 
                 if (string.IsNullOrEmpty(response))
@@ -206,6 +206,12 @@ public class SurrealDbClient : ISurrealDbClient
     public async Task AuthenticateAsync(string username, string password, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        // Validate credentials first (before checking connection state)
+        if (string.IsNullOrWhiteSpace(username))
+            throw new ValidationException("Username cannot be empty.");
+        if (string.IsNullOrWhiteSpace(password))
+            throw new ValidationException("Password cannot be empty.");
 
         if (!_isConnected || _currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");

@@ -9,6 +9,7 @@ using Exceptions;
 
 /// <summary>
 /// F10 Fix: Protocol method constants to avoid magic strings.
+/// This class exists in the Protocol namespace for WebSocket adapter use.
 /// </summary>
 internal static class ProtocolMethods
 {
