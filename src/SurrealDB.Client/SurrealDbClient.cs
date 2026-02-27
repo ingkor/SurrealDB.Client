@@ -2,6 +2,7 @@ namespace SurrealDB.Client;
 
 using Authentication;
 using Connection;
+using Exceptions;
 using Protocol;
 using Serialization;
 

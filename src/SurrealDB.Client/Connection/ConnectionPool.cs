@@ -1,6 +1,7 @@
 namespace SurrealDB.Client.Connection;
 
 using System.Collections.Concurrent;
+using Exceptions;
 using Protocol;
 
 /// <summary>
