@@ -2,6 +2,7 @@ namespace SurrealDB.Client.Protocol;
 
 using System.Net.WebSockets;
 using System.Text;
+using Exceptions;
 
 /// <summary>
 /// WebSocket protocol adapter for SurrealDB communication.
