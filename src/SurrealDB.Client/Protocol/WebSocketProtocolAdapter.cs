@@ -27,6 +27,7 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
     private ClientWebSocket? _webSocket;
     private bool _disposed;
     private int _requestId = 0;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     /// <summary>
     /// Maximum allowed response size (50 MB). Prevents OOM attacks from oversized messages.
@@ -114,13 +115,14 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
     {
         ThrowIfDisposed();
 
-        if (_webSocket == null || !IsConnected)
-        {
-            throw new ConnectionException("WebSocket is not connected");
-        }
-
+        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_webSocket == null || !IsConnected)
+            {
+                throw new ConnectionException("WebSocket is not connected");
+            }
+
             // SECURITY FIX: Validate body parameter is well-formed JSON to prevent injection
             // Vuln 1: JSON Injection via unvalidated body parameter
             if (body != null)
@@ -169,6 +171,10 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
         catch (Exception ex) when (!(ex is SurrealDbException))
         {
             throw new QueryException("WebSocket query execution failed", ex);
+        }
+        finally
+        {
+            _sendLock.Release();
         }
     }
 

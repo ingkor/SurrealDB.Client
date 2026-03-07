@@ -6,6 +6,11 @@
     <RootNamespace>SurrealDB.Client.Tests.Integration</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="xunit" Version="2.6.4" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.4">
@@ -13,11 +18,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.2" />
-    <PackageReference Include="Testcontainers" Version="3.5.0" />
+    <PackageReference Include="Aspire.Hosting.Testing" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/SurrealDB.Client/SurrealDB.Client.csproj" />
+    <ProjectReference Include="../SurrealDB.Client.AppHost/SurrealDB.Client.AppHost.csproj" />
   </ItemGroup>
 
 </Project>

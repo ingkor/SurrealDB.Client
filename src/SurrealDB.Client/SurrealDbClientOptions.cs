@@ -120,6 +120,7 @@ public class SurrealDbClientOptions
         // SECURITY FIX: P0-2 - Validate connection string doesn't contain embedded credentials
         ValidateConnectionString(ConnectionString);
 
+
         if (string.IsNullOrWhiteSpace(Namespace))
             throw new ValidationException("Namespace is required and cannot be empty.");
 
@@ -141,6 +142,7 @@ public class SurrealDbClientOptions
                 "set 'AcknowledgeCertificateValidationRisk = true'. " +
                 "NEVER disable certificate validation in production.");
         }
+
 
         if (PoolSize < 1)
             throw new ValidationException("PoolSize must be at least 1.");

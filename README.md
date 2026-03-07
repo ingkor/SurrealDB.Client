@@ -89,6 +89,13 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 
 ## 🚀 Quick Start
 
+### ⚠️ Requirements
+
+- **SurrealDB 3.0 or newer** (required - 1.x and 2.x not supported)
+  - Features like UPSERT syntax depend on SurrealDB 3.0+ enhancements
+  - Version validation occurs on `ConnectAsync()` with clear error messaging
+  - Update your SurrealDB deployment to 3.0+ before using this client
+
 ### Installation
 
 ```bash
