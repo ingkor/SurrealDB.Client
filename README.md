@@ -18,40 +18,27 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 | **[docs/consumer/SECURITY.md](docs/consumer/SECURITY.md)** | Security best practices |
 | **[docs/consumer/CHANGELOG.md](docs/consumer/CHANGELOG.md)** | Version history and upgrade guide |
 
-## Internal Documentation
+## Technical Documentation
 
-**For maintainers and contributors only:**
-
-### Core Architecture (A Grade)
+### Architecture & Design
 | Document | Focus |
 |----------|-------|
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Complete architectural design, EF Core comparison, roadmap |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Architectural design and EF Core comparison |
+| **[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)** | Key design choices and rationale |
 | **[STATE_MANAGEMENT.md](STATE_MANAGEMENT.md)** | Entity states, change tracking, session lifecycle |
 | **[QUERY_COMPOSITION.md](QUERY_COMPOSITION.md)** | IQueryable API, query building, expression translation |
-| **[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)** | Key design choices and rationale |
-| **[RISK_ASSESSMENT.md](RISK_ASSESSMENT.md)** | Risk analysis and mitigation strategies |
 | **[LOADING_PATTERNS.md](LOADING_PATTERNS.md)** | Include/Lazy/Explicit loading patterns |
 | **[INTERCEPTORS.md](INTERCEPTORS.md)** | Middleware and query interception |
 | **[QUERY_CACHING.md](QUERY_CACHING.md)** | Multi-level caching strategies |
 | **[DIAGNOSTICS.md](DIAGNOSTICS.md)** | Monitoring, profiling, observability |
 
-### Enterprise Features (S Grade)
+### Enterprise Features
 | Document | Focus |
 |----------|-------|
 | **[MIGRATIONS.md](MIGRATIONS.md)** | Schema versioning, migrations, rollback |
 | **[PLUGINS.md](PLUGINS.md)** | Plugin architecture and extensibility |
 | **[DATALOADER.md](DATALOADER.md)** | Batch loading, N+1 prevention |
 | **[EVENT_SOURCING.md](EVENT_SOURCING.md)** | Event sourcing, event replay, snapshots |
-
-### Execution & Development
-| Document | Focus |
-|----------|-------|
-| **[BACKLOG.md](BACKLOG.md)** | Complete task list and implementation details |
-| **[EXECUTION_CHECKLIST.md](EXECUTION_CHECKLIST.md)** | Quick reference with checkboxes |
-| **[EXECUTION_SUMMARY.md](EXECUTION_SUMMARY.md)** | Development plan and timeline |
-| **[DEVELOPER_ASSIGNMENT.md](DEVELOPER_ASSIGNMENT.md)** | Developer instructions and test matrix |
-| **[REVIEW_WORKFLOW.md](REVIEW_WORKFLOW.md)** | Code review pipeline and approval criteria |
-| **[docs/roles/](docs/roles/)** | Role-based guidance for team members
 
 ## Features
 
@@ -70,9 +57,9 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 
 ---
 
-## 🌟 Architecture Grade: S (Superior/Enterprise)
+## 🌟 Full Feature Overview
 
-**A-Grade Features:**
+**Core Features:**
 - ✅ Unit of Work pattern (ISurrealDbSession)
 - ✅ Automatic change tracking with snapshots
 - ✅ IQueryable composition (deferred execution)
@@ -82,10 +69,10 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 - ✅ Optimistic concurrency tokens
 - ✅ Typed exceptions
 - ✅ Protocol abstraction (HTTP/WebSocket)
-- ✅ Real-time subscriptions (unique)
+- ✅ Real-time subscriptions
 - ✅ Comprehensive diagnostics
 
-**S-Grade Features (Enterprise):**
+**Enterprise Features:**
 - ✅ **Migrations**: Schema versioning with rollback
 - ✅ **Security**: RLS, field encryption, audit trails, compliance
 - ✅ **Plugins**: Extensible plugin architecture
@@ -97,7 +84,6 @@ A modern, production-grade .NET/C# client library for [SurrealDB](https://surrea
 - 🚀 Protocol abstraction (HTTP/WebSocket)
 - 🚀 Multi-serializer support
 - 🚀 99% bandwidth efficiency (change tracking)
-- 🚀 S-Grade enterprise features
 
 ---
 
@@ -393,35 +379,6 @@ await foreach (var change in subscription.GetChangesAsync())
 
 ---
 
-## 📚 Implementation Roadmap
-
-### Phase 1: Foundation (Weeks 1-4) ✅
-- ISurrealDbSession + ChangeTracker
-- IQueryable composition
-- Optimistic concurrency
-- Typed exception hierarchy
-- Connection management
-- CRUD operations
-
-### Phase 2: Features (Weeks 5-8)
-- Real-time subscriptions
-- Eager loading patterns
-- Advanced queries
-- Performance metrics
-- Session management
-
-### Phase 3: Polish (Weeks 9-12)
-- Caching layer
-- Response streaming
-- Migration system
-- User guides & examples
-
-### Phase 4+: Enterprise (Future)
-- Plugin system
-- Distributed caching
-- GraphQL support
-
----
 
 ## 🔄 Migration from Other Clients
 
@@ -478,11 +435,10 @@ catch (SurrealDbException ex)
 
 ## 📖 Complete Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Architectural design, EF Core comparison, roadmap, risk assessment
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Architectural design and EF Core comparison
 - **[STATE_MANAGEMENT.md](STATE_MANAGEMENT.md)** - Entity states, change tracking, session lifecycle, performance
 - **[QUERY_COMPOSITION.md](QUERY_COMPOSITION.md)** - IQueryable API, expression translation, optimization patterns
 - **[DESIGN_DECISIONS.md](DESIGN_DECISIONS.md)** - Key architectural decisions and rationale
-- **[RISK_ASSESSMENT.md](RISK_ASSESSMENT.md)** - Comprehensive risk analysis and mitigation
 
 ---
 

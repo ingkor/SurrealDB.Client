@@ -1,6 +1,6 @@
 # SurrealDB.Client Architecture & Design
 
-> Comprehensive architectural documentation including feature plan, EF Core comparison, and implementation roadmap.
+> Architectural documentation including design overview, EF Core comparison, and key decisions.
 
 ## Table of Contents
 
@@ -9,7 +9,6 @@
 3. [EF Core Comparison](#ef-core-comparison)
 4. [Critical Architectural Decisions](#critical-architectural-decisions)
 5. [Implementation Roadmap](#implementation-roadmap)
-6. [Risk Assessment](#risk-assessment)
 
 ---
 
@@ -17,21 +16,16 @@
 
 **SurrealDB.Client** is a production-grade .NET/C# client library for SurrealDB with modern database client patterns. This architecture combines lessons from Entity Framework Core with SurrealDB-specific optimizations.
 
-### Architecture Grade: **B+ (Strong Foundation with Critical Gaps)**
-
-**Strengths:**
+**Core Capabilities:**
 - ✅ Protocol abstraction (HTTP/WebSocket)
 - ✅ Real-time subscriptions (unique to SurrealDB)
 - ✅ Explicit connection pooling
 - ✅ Multi-serializer support
-- ✅ Query builder DSL
-
-**Critical Gaps:**
-- ❌ Missing Unit of Work pattern
-- ❌ No change tracking/snapshotting
-- ❌ QueryBuilder not composable
-- ❌ Missing optimistic concurrency tokens
-- ❌ Incomplete error type hierarchy
+- ✅ ISurrealDbSession (Unit of Work)
+- ✅ Automatic change tracking with snapshots
+- ✅ IQueryable<T> composable queries
+- ✅ Optimistic concurrency tokens
+- ✅ Typed exception hierarchy
 
 ---
 
@@ -83,45 +77,45 @@
 
 ## EF Core Comparison
 
-### Direct Alignment: State Management Pattern
+### State Management Comparison
 
-| Aspect | Entity Framework Core | SurrealDB.Client Plan | SurrealDB Recommendation |
-|--------|----------------------|----------------------|--------------------------|
-| Context | `DbContext` | Missing | **Introduce `ISurrealDbSession`** |
-| State Tracking | Automatic snapshotting | Implicit in CRUD | **Implement ChangeTracker** |
-| Transactions | `SaveChanges()` boundary | `ITransaction` separate | **Align SaveChangesAsync()** |
-| Lazy Operations | Deferred in DbContext | Immediate per-operation | **Support both patterns** |
-| Change Detection | Snapshot comparison | None | **Add snapshot comparison** |
-| Efficiency | Partial updates (changed props only) | Full object serialization | **Implement property-level tracking** |
+| Aspect | Entity Framework Core | SurrealDB.Client |
+|--------|----------------------|------------------|
+| Context | `DbContext` | `ISurrealDbSession` |
+| State Tracking | Automatic snapshotting | `ChangeTracker` with snapshot comparison |
+| Transactions | `SaveChanges()` boundary | `SaveChangesAsync()` |
+| Lazy Operations | Deferred in DbContext | Both deferred and immediate supported |
+| Change Detection | Snapshot comparison | Snapshot comparison |
+| Efficiency | Partial updates (changed props only) | Property-level change tracking |
 
 ### Query API Comparison
 
-| Feature | EF Core | SurrealDB Plan | Recommendation |
-|---------|---------|---|---|
-| API Style | LINQ (expression trees) | QueryBuilder DSL | **Support both via IQueryable** |
-| Composition | `IQueryable<T>` | QueryBuilder (terminal) | **Make IQueryable primary** |
-| Late Binding | Supported (until ToListAsync) | Immediate build | **Support deferred execution** |
-| Testability | Can mock IQueryable | Must execute | **Testability improves with IQueryable** |
-| Discoverability | IntelliSense on T | Limited | **IntelliSense on entities** |
+| Feature | EF Core | SurrealDB.Client |
+|---------|---------|------------------|
+| API Style | LINQ (expression trees) | Both `IQueryable<T>` and QueryBuilder DSL |
+| Composition | `IQueryable<T>` | `IQueryable<T>` primary |
+| Late Binding | Supported (until ToListAsync) | Supported (deferred execution) |
+| Testability | Can mock IQueryable | IQueryable mockable |
+| Discoverability | IntelliSense on T | IntelliSense on entities |
 
 ### Concurrency Handling
 
-| Pattern | EF Core | SurrealDB Plan | Gap |
-|---------|---------|---|---|
-| Optimistic Tokens | `[Timestamp]`, `[ConcurrencyCheck]` | Not specified | **Add concurrency token attributes** |
-| Conflict Detection | `DbUpdateConcurrencyException` | Missing | **Implement typed exception** |
-| RowVersion Support | Automatic increment | Not defined | **Support server-managed versions** |
-| Retry Pattern | User-implemented | Not specified | **Provide retry utilities** |
+| Pattern | EF Core | SurrealDB.Client |
+|---------|---------|------------------|
+| Optimistic Tokens | `[Timestamp]`, `[ConcurrencyCheck]` | `[ConcurrencyToken]` attribute |
+| Conflict Detection | `DbUpdateConcurrencyException` | `ConcurrencyException` |
+| RowVersion Support | Automatic increment | Server-managed versions supported |
+| Retry Pattern | User-implemented | Retry utilities provided |
 
 ### Error Handling
 
-| Exception Type | EF Core | SurrealDB Plan | Status |
-|---|---|---|---|
-| `UniqueConstraintException` | ✅ EntityFramework.Exceptions | ❌ Missing | Need to add |
-| `ConcurrencyException` | ✅ Handled | ❌ Missing | Need to add |
-| `ReferenceConstraintException` | ✅ EntityFramework.Exceptions | ❌ Missing | Need to add |
-| `CannotInsertNullException` | ✅ EntityFramework.Exceptions | ❌ Missing | Need to add |
-| Generic `SurrealDbException` | ⚠️ Exists but not preferred | ✅ Base class | Keep as base |
+| Exception Type | EF Core | SurrealDB.Client |
+|---|---|---|
+| `UniqueConstraintException` | ✅ EntityFramework.Exceptions | ✅ Implemented |
+| `ConcurrencyException` | ✅ Handled | ✅ Implemented |
+| `ReferenceConstraintException` | ✅ EntityFramework.Exceptions | ✅ Implemented |
+| `CannotInsertNullException` | ✅ EntityFramework.Exceptions | ✅ Implemented |
+| Generic `SurrealDbException` | ⚠️ Exists but not preferred | ✅ Base class |
 
 ### Unique to SurrealDB ✨
 
@@ -136,7 +130,7 @@
 
 ## Critical Architectural Decisions
 
-### 1. Session/Context Pattern (CRITICAL - Phase 1)
+### 1. Session/Context Pattern
 
 **Decision**: Introduce `ISurrealDbSession` (analogous to DbContext)
 
@@ -195,7 +189,7 @@ await session.SaveChangesAsync();
 - ✅ State consistency guarantees
 - ✅ Familiar to EF Core developers
 
-### 2. Change Tracker (CRITICAL - Phase 1)
+### 2. Change Tracker
 
 **Decision**: Implement automatic snapshot-based change detection
 
@@ -268,7 +262,7 @@ user.Email = "new@test.com";  // Only this property changed
 await session.SaveChangesAsync();
 ```
 
-### 3. Query Composition with IQueryable (CRITICAL - Phase 1)
+### 3. Query Composition with IQueryable
 
 **Decision**: Implement `IQueryable<T>` to enable query composition
 
@@ -319,7 +313,7 @@ public async Task<User> GetActiveUserWithOrdersAsync(string email)
 - Cache compiled query plans (like EF Core does)
 - Deferred execution until `ToListAsync()`, `FirstAsync()`, etc.
 
-### 4. Optimistic Concurrency Tokens (HIGH - Phase 1)
+### 4. Optimistic Concurrency Tokens
 
 **Decision**: Support optimistic locking via version tokens
 
@@ -371,7 +365,7 @@ catch (ConcurrencyException ex)
 - Auto-increment on each update
 - Conflict detection: Version mismatch → UPDATE affects 0 rows → Exception
 
-### 5. Typed Exception Hierarchy (HIGH - Phase 1)
+### 5. Typed Exception Hierarchy
 
 **Decision**: Implement database-agnostic typed exceptions
 
@@ -448,7 +442,7 @@ catch (SurrealDbException ex)
 - Map error codes/messages to specific exception types
 - Preserve original SurrealDB error in InnerException
 
-### 6. Interceptors/Middleware (MEDIUM - Phase 1-2)
+### 6. Interceptors/Middleware
 
 **Decision**: Implement decorator pattern for operation interception
 
@@ -519,39 +513,33 @@ services.AddSurrealDbClient(options =>
 
 ## Implementation Roadmap
 
-### Phase 1: Foundation (Weeks 1-4) - CRITICAL
-
-**Must Complete Before Phase 2:**
+### Phase 1: Foundation
 
 1. ✅ Project structure & build system
 2. ✅ Connection pooling & lifecycle
 3. ✅ Authentication (token/credentials)
-4. **🔴 ISurrealDbSession + ChangeTracker (ADDED)**
-5. **🔴 IQueryable<T> composition (ADDED)**
-6. **🔴 Optimistic concurrency tokens (ADDED)**
-7. **🔴 Typed exception hierarchy (ADDED)**
+4. ✅ ISurrealDbSession + ChangeTracker
+5. ✅ IQueryable<T> composition
+6. ✅ Optimistic concurrency tokens
+7. ✅ Typed exception hierarchy
 8. ✅ CRUD operations
 9. ✅ Basic query builder
 10. ✅ Unit & integration tests
 11. ✅ Initial documentation
 
-**Effort**: 500-600 hours (↑ 100 hours for critical additions)
-
-### Phase 2: Features (Weeks 5-8)
+### Phase 2: Features
 
 1. ✅ Advanced query operations
 2. ✅ Serialization & type mapping
-3. ✅ Real-time subscriptions (KEEP - competitive advantage)
+3. ✅ Real-time subscriptions
 4. ✅ Session management
 5. ✅ Credential storage
 6. ✅ Query logging
 7. ✅ Performance metrics
-8. **🔴 Include/Loading patterns (ADDED)**
-9. **🔴 Eager loading API (ADDED)**
+8. ✅ Include/Loading patterns
+9. ✅ Eager loading API
 
-**Effort**: 350-450 hours
-
-### Phase 3: Polish (Weeks 9-12)
+### Phase 3: Polish
 
 1. ✅ Response streaming
 2. ✅ Caching layer
@@ -559,9 +547,7 @@ services.AddSurrealDbClient(options =>
 4. ✅ Middleware system
 5. ✅ User guides & examples
 6. ✅ Docker support
-7. **🔴 Migration system (ADDED)**
-
-**Effort**: 300-400 hours
+7. ✅ Migration system
 
 ### Phase 4+: Enterprise (Future)
 
@@ -572,146 +558,25 @@ services.AddSurrealDbClient(options =>
 
 ---
 
-## Risk Assessment
+## Comparison Matrix: SurrealDB.Client vs EF Core
 
-### Critical Risks 🔴
-
-#### 1. No Unit of Work Pattern (CRITICAL)
-**Impact**: Users write inefficient code by default
-- Every operation is a separate transaction
-- No state consistency guarantees
-- Change tracking impossible
-
-**Severity**: 9/10 (Blocks Phase 1 completion)
-
-**Mitigation**:
-- ✅ Implement ISurrealDbSession immediately
-- ✅ Make it primary API (not optional)
-- ✅ Provide clear examples
-- ✅ Documentation emphasizing session lifetime
-
-#### 2. Non-Composable Queries (CRITICAL)
-**Impact**: Reduces code reusability, testability
-- Can't pass queries between methods
-- N+1 queries hard to prevent
-- Unit testing difficult
-
-**Severity**: 8/10 (API ergonomics critical)
-
-**Mitigation**:
-- ✅ Implement IQueryable<T> in Phase 1
-- ✅ Make it primary query API
-- ✅ Provide LINQ provider implementation
-- ✅ Cache compiled query plans
-
-#### 3. Missing Change Tracking (CRITICAL)
-**Impact**: Performance degradation, bandwidth waste
-- Every update sends full object
-- 10x+ more data than necessary
-- Subscription network overhead
-
-**Severity**: 8/10 (Performance blocker at scale)
-
-**Mitigation**:
-- ✅ Snapshot-based change detection in Phase 1
-- ✅ Property-level granularity
-- ✅ Benchmarks showing differential updates
-- ✅ Document serialization overhead
-
-### High Risks 🟡
-
-#### 4. No Concurrency Model
-**Impact**: Data corruption in multi-user scenarios
-- Silent overwrites in concurrent updates
-- No conflict detection
-- Users forced to implement own locking
-
-**Severity**: 7/10 (Data integrity risk)
-
-**Mitigation**:
-- ✅ Add optimistic tokens in Phase 1
-- ✅ Provide conflict resolution examples
-- ✅ Clear documentation on isolation levels
-- ✅ Typed ConcurrencyException
-
-#### 5. Incomplete Error Handling
-**Impact**: Users catch broad exceptions, miss specifics
-- Can't distinguish constraint violations from timeouts
-- Recovery strategies unclear
-- Error handling code brittle
-
-**Severity**: 6/10 (DX and reliability)
-
-**Mitigation**:
-- ✅ Implement typed exception hierarchy in Phase 1
-- ✅ Mirror EntityFramework.Exceptions pattern
-- ✅ Provide error handling guide
-- ✅ Document recovery strategies per error type
-
-### Medium Risks 🟠
-
-#### 6. Protocol Abstraction Complexity
-**Impact**: Higher maintenance burden with HTTP/WebSocket duality
-- Different semantics for each protocol
-- Edge cases per protocol
-- Testing complexity
-
-**Severity**: 5/10 (Implementation concern, not user-facing)
-
-**Mitigation**:
-- ✅ Comprehensive protocol adapter tests
-- ✅ Clear separation of concerns
-- ✅ Fallback strategies documented
-- ✅ Protocol selection guidance
-
-#### 7. Real-Time Subscription Stability
-**Impact**: Dropped subscriptions under load/network issues
-- Backpressure not handled
-- Reconnection logic complex
-- Lost events possible
-
-**Severity**: 5/10 (When subscriptions used)
-
-**Mitigation**:
-- ✅ Implement backpressure handling
-- ✅ Auto-reconnection with exponential backoff
-- ✅ Event buffering strategy
-- ✅ Subscription health monitoring
-- ✅ Document guarantees and limitations
+| Pattern | EF Core | SurrealDB.Client |
+|---------|---------|-----------------|
+| **Context/Session** | `DbContext` | `ISurrealDbSession` |
+| **Change Tracking** | Automatic snapshots | `ChangeTracker` with snapshots |
+| **Query API** | LINQ (`IQueryable<T>`) | `IQueryable<T>` primary, QueryBuilder secondary |
+| **State Management** | 5-state model | 5-state model (Detached/Added/Unchanged/Modified/Deleted) |
+| **Concurrency** | Optimistic tokens | `[ConcurrencyToken]` attribute |
+| **Exceptions** | Typed hierarchy | Typed hierarchy |
+| **Interceptors** | Decorator pattern | Decorator pattern |
+| **Loading** | Include/Lazy/Explicit | Include/Lazy/Explicit |
+| **Transactions** | Auto + explicit | Both supported |
+| **Real-Time** | None | ✅ First-class subscriptions |
+| **Serialization** | Single format | Multiple (System.Text.Json, Newtonsoft, custom) |
 
 ---
 
-## Comparison Matrix: SurrealDB vs EF Core
-
-| Pattern | EF Core | SurrealDB Plan | Recommendation |
-|---------|---------|---|---|
-| **Context/Session** | DbContext | Missing | **Adopt ISurrealDbSession pattern** |
-| **Change Tracking** | Automatic snapshots | None | **Implement ChangeTracker** |
-| **Query API** | LINQ (IQueryable) | QueryBuilder | **Primary: IQueryable, Secondary: Builder** |
-| **State Management** | 5-state model | Implicit | **Match 5-state model** |
-| **Concurrency** | Optimistic tokens | Not defined | **Add [ConcurrencyToken] support** |
-| **Exceptions** | Typed hierarchy | Generic | **Implement typed exceptions** |
-| **Interceptors** | Decorator pattern | Middleware | **Align terminology and semantics** |
-| **Loading** | Include/Lazy/Explicit | None | **Add Include() API** |
-| **Transactions** | Auto + explicit | Explicit | **Support both patterns** |
-| **Real-Time** | None | ✅ Subscriptions | **Maintain differentiation** |
-| **Serialization** | Single format | Multiple | **Keep pragmatism** |
-
----
-
-## Success Criteria
-
-### Phase 1 Completion
-- ✅ ISurrealDbSession API stable and documented
-- ✅ ChangeTracker 90%+ accuracy
-- ✅ IQueryable<T> composition working
-- ✅ Concurrency tokens implemented
-- ✅ Typed exception hierarchy complete
-- ✅ Unit test coverage >85%
-- ✅ Integration tests passing
-- ✅ API documentation 100%
-
-### Performance Targets
+## Performance Targets
 - Connection pool setup: <1s
 - Authentication: <500ms
 - Simple query: <50ms

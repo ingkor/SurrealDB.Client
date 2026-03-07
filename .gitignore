@@ -7,6 +7,12 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
+# Internal roles/AI agent personas
+roles/
+
+# Visual Studio IDE files
+.vs/
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
