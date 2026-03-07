@@ -10,7 +10,11 @@
       "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(dotnet test:*)"
+      "Bash(dotnet test:*)",
+      "Bash(git merge:*)",
+      "Bash(dotnet:*)",
+      "Bash(aspire mcp:*)",
+      "Bash(claude mcp:*)"
     ]
   }
 }

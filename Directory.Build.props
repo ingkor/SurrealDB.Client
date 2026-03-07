@@ -36,7 +36,7 @@
 
   <!-- Target Framework -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
   <!-- NuGet Dependency Versions -->

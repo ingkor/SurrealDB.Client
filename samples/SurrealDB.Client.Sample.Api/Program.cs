@@ -5,6 +5,8 @@ using SurrealDB.Client.Sample.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 // ── SurrealDB connection ──────────────────────────────────────────────────────
 // Aspire injects: services__surrealdb__http__0 = http://host:port
 // Fallback: localhost:8000 for standalone runs
