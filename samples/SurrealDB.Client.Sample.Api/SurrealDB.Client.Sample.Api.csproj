@@ -8,6 +8,8 @@
     <RootNamespace>SurrealDB.Client.Sample.Api</RootNamespace>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsAspireApp>true</IsAspireApp>
+    <UserSecretsId>surreal-sample-api</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SurrealDB.Client\SurrealDB.Client.csproj" />
+    <ProjectReference Include="..\SurrealDB.Client.ServiceDefaults\SurrealDB.Client.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>
