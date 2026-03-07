@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Caching;
+using Exceptions;
 using Interceptors;
 using Session;
 
@@ -47,7 +48,7 @@ public class SurrealDbQueryProvider : IQueryProvider
     /// <summary>
     /// Creates a new queryable from an expression.
     /// </summary>
-    public IQueryable<S> CreateQuery<S>(Expression expression) where S : class
+    public IQueryable<S> CreateQuery<S>(Expression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
         return new SurrealDbQuery<S>(this, expression);
@@ -96,34 +97,24 @@ public class SurrealDbQueryProvider : IQueryProvider
         if (compiled.IsScalar && typeof(TResult).IsGenericType &&
             typeof(TResult).GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
-            // Return enumerable for scalar results
-            var task = _client.QueryAsync<dynamic>(compiled.SurrealQL);
-            var results = task.GetAwaiter().GetResult() ?? new List<dynamic>();
-
+            var task = _client.QueryAsync<object>(compiled.SurrealQL);
+            var results = task.GetAwaiter().GetResult() ?? Enumerable.Empty<object>();
             return (TResult)(object)results;
         }
 
-        // Execute typed query
-        var queryTask = _client.QueryAsync<TResult>(compiled.SurrealQL);
-        var queryResults = queryTask.GetAwaiter().GetResult();
-
+        // Execute typed query — TResult is IEnumerable<T> in the typical case
         if (typeof(TResult).IsGenericType &&
             typeof(TResult).GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
-            return (TResult)(object)(queryResults ?? new List<TResult>());
+            var elementType = typeof(TResult).GetGenericArguments()[0];
+            var queryTask = _client.QueryAsync(compiled.SurrealQL);
+            var queryResult = queryTask.GetAwaiter().GetResult();
+            return (TResult)(object)(queryResult.Data != null
+                ? new[] { queryResult.Data }.AsEnumerable()
+                : Enumerable.Empty<object>());
         }
 
-        // If requesting a single result, return first or default
-        if (typeof(TResult).IsGenericType && typeof(TResult).GenericTypeArguments[0].IsClass)
-        {
-            var elementType = typeof(TResult).GenericTypeArguments[0];
-            var list = (IEnumerable<TResult>?)queryResults;
-            var first = list?.FirstOrDefault();
-
-            return first!;
-        }
-
-        return queryResults ?? default!;
+        return default!;
     }
 
     /// <summary>
@@ -166,7 +157,7 @@ public class SurrealDbQueryProvider : IQueryProvider
             }
 
             // Execute query
-            var results = await _client.QueryAsync<T>(compiled.SurrealQL, cancellationToken)
+            var results = await _client.QueryAsync<T>(compiled.SurrealQL, null, cancellationToken)
                 .ConfigureAwait(false);
 
             var resultList = results?.ToList() ?? new List<T>();

@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 /// IQueryable<T> implementation for SurrealDB queries.
 /// Enables LINQ-style query composition with deferred execution.
 /// </summary>
-public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
+public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T>
 {
     private readonly IQueryProvider _provider;
     private readonly Expression _expression;
@@ -66,7 +66,7 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public List<T> ToList()
     {
-        return GetEnumerator().ToList();
+        return ((IEnumerable<T>)this).ToList();
     }
 
     /// <summary>
@@ -74,7 +74,7 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public T[] ToArray()
     {
-        return ToList().ToArray();
+        return ((IEnumerable<T>)this).ToArray();
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public T? FirstOrDefault()
     {
-        return GetEnumerator().FirstOrDefault();
+        return ((IEnumerable<T>)this).FirstOrDefault();
     }
 
     /// <summary>
@@ -90,7 +90,7 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public T First()
     {
-        return GetEnumerator().First();
+        return ((IEnumerable<T>)this).First();
     }
 
     /// <summary>
@@ -98,7 +98,7 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public bool Any()
     {
-        return GetEnumerator().Any();
+        return ((IEnumerable<T>)this).Any();
     }
 
     /// <summary>
@@ -106,6 +106,6 @@ public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T> where T : class
     /// </summary>
     public int Count()
     {
-        return GetEnumerator().Count();
+        return ((IEnumerable<T>)this).Count();
     }
 }

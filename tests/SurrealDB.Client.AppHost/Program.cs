@@ -2,14 +2,22 @@ using Aspire.Hosting;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Add SurrealDB container with health checks
+// SurrealDB container
+// Podman or Docker: surrealdb/surrealdb:latest
+// Starts in-memory mode with root credentials on port 8000
 var surrealdb = builder
-    .AddContainer("surrealdb", "surrealdb/surrealdb")
-    .WithCommand("start", "--auth", "--user", "admin", "--pass", "password")
+    .AddContainer("surrealdb", "surrealdb/surrealdb", "latest")
+    .WithArgs("start", "--auth", "--user", "admin", "--pass", "password", "memory")
     .WithEnvironment("SURREAL_AUTH", "true")
     .WithEnvironment("SURREAL_USER", "admin")
     .WithEnvironment("SURREAL_PASS", "password")
-    .WithHttpEndpoint(targetPort: 8000, name: "http")
-    .WithHealthCheck();
+    .WithHttpEndpoint(port: 8000, targetPort: 8000, name: "http");
+
+// Sample API — receives SurrealDB endpoint via Aspire service discovery
+// Aspire injects: services__surrealdb__http__0=http://host:port
+builder
+    .AddProject<Projects.SurrealDB_Client_Sample_Api>("sample-api")
+    .WithReference(surrealdb.GetEndpoint("http"))
+    .WaitFor(surrealdb);
 
 builder.Build().Run();

@@ -108,7 +108,7 @@ public class EntityEntry<T> where T : class
         }
 
         _originalValues.Clear();
-        _originalValues.Update(_snapshot);
+        foreach (var kv in _snapshot) _originalValues[kv.Key] = kv.Value;
         _state = EntityState.Unchanged;
     }
 

@@ -10,6 +10,7 @@ using Plugins;
 using Protocol;
 using Serialization;
 using Session;
+using Validation;
 
 /// <summary>
 /// F10 Fix: Protocol method constants to avoid magic strings.
@@ -471,6 +472,7 @@ public class SurrealDbClient : ISurrealDbClient
     }
 
     public async Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default)
+        where T : class
     {
         ThrowIfDisposed();
         ValidateRecordId(recordId);
@@ -550,7 +552,7 @@ public class SurrealDbClient : ISurrealDbClient
         }
     }
 
-    public async Task<bool> DeleteAsync(string recordId, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(string recordId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ValidateRecordId(recordId);
@@ -564,7 +566,6 @@ public class SurrealDbClient : ISurrealDbClient
             var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
             var envelope = _serializer.Deserialize<SurrealDbResponse<object>>(response);
             envelope?.EnsureSuccess();
-            return true;  // Idempotent: return true if DELETE was acknowledged
         }
         catch (Exception ex) when (!(ex is SurrealDbException))
         {

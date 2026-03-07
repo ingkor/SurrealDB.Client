@@ -95,7 +95,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created entity.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<T> CreateAsync<T>(string table, T data, CancellationToken cancellationToken = default);
+    Task<T?> CreateAsync<T>(string table, T data, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Creates multiple new records.
@@ -106,7 +106,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The created entities.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<IEnumerable<T>> CreateAsync<T>(string table, IEnumerable<T> data, CancellationToken cancellationToken = default);
+    Task<IEnumerable<T?>> CreateAsync<T>(string table, IEnumerable<T> data, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Gets a record by ID.
@@ -116,7 +116,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The entity or null if not found.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default);
+    Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Selects all records from a table.
@@ -126,7 +126,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The entities.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<IEnumerable<T>> SelectAsync<T>(string table, CancellationToken cancellationToken = default);
+    Task<IEnumerable<T>> SelectAsync<T>(string table, int limit = 1000, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates a record.
@@ -137,7 +137,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The updated entity.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<T> UpdateAsync<T>(string recordId, T data, CancellationToken cancellationToken = default);
+    Task<T?> UpdateAsync<T>(string recordId, T data, CancellationToken cancellationToken = default) where T : class;
 
     /// <summary>
     /// Deletes a record.
@@ -157,7 +157,7 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The upserted entity.</returns>
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
-    Task<T> UpsertAsync<T>(string recordId, T data, CancellationToken cancellationToken = default);
+    Task<T?> UpsertAsync<T>(string recordId, T data, CancellationToken cancellationToken = default) where T : class;
 
     #endregion
 

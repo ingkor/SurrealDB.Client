@@ -53,7 +53,7 @@ public interface IDomainEvent
 public abstract class DomainEventBase : IDomainEvent
 {
     public string EventId { get; set; } = Guid.NewGuid().ToString();
-    public abstract string AggregateId { get; }
+    public virtual string AggregateId { get; set; } = string.Empty;
     public virtual string EventType => GetType().Name;
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     public int Version { get; set; }
@@ -185,19 +185,16 @@ public class EventSourcingManager
 /// </summary>
 public class EntityCreatedEvent : DomainEventBase
 {
-    public override string AggregateId { get; set; } = string.Empty;
     public string EntityType { get; set; } = string.Empty;
     public Dictionary<string, object>? InitialData { get; set; }
 }
 
 public class EntityUpdatedEvent : DomainEventBase
 {
-    public override string AggregateId { get; set; } = string.Empty;
     public Dictionary<string, object>? Changes { get; set; }
 }
 
 public class EntityDeletedEvent : DomainEventBase
 {
-    public override string AggregateId { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
 }

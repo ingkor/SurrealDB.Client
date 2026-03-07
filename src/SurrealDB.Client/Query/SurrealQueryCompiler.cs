@@ -121,7 +121,7 @@ internal class SurrealQLExpressionVisitor : ExpressionVisitor
     /// <summary>
     /// Visits MethodCallExpression to handle LINQ methods.
     /// </summary>
-    public override Expression? VisitMethodCall(MethodCallExpression node)
+    protected override Expression? VisitMethodCall(MethodCallExpression node)
     {
         // Handle query methods
         var method = node.Method;
@@ -317,9 +317,10 @@ internal class SurrealQLExpressionVisitor : ExpressionVisitor
     /// <summary>
     /// Visits a Constant expression and extracts table name.
     /// </summary>
-    public override Expression? VisitConstant(ConstantExpression node)
+    protected override Expression? VisitConstant(ConstantExpression node)
     {
-        if (node.Value is SurrealDbQuery<> query)
+        if (node.Value?.GetType() is { IsGenericType: true } t &&
+            t.GetGenericTypeDefinition() == typeof(SurrealDbQuery<>))
         {
             // Extract table name from SurrealDbQuery metadata if available
             _tableName = "unknown_table";

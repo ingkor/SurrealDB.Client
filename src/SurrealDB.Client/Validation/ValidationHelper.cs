@@ -1,6 +1,7 @@
 namespace SurrealDB.Client.Validation;
 
 using System.Text.RegularExpressions;
+using Exceptions;
 
 /// <summary>
 /// Provides validation helpers for SurrealDB table names and record IDs.

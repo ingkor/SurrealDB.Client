@@ -130,7 +130,7 @@ internal class SurrealDbSession : ISurrealDbSession
         else
         {
             // Use temporary transaction
-            using var txn = BeginTransaction();
+            await using var txn = BeginTransaction();
             affectedCount = await ExecuteChangesInTransaction(
                 addedEntities, modifiedEntities, deletedEntities, cancellationToken);
             await txn.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -178,11 +178,13 @@ internal class SurrealDbSession : ISurrealDbSession
                         if (concurrencyProperty != null)
                         {
                             // Get the expected (original) token value
-                            var expectedToken = entry.GetOriginalPropertyValue(concurrencyProperty.Name);
+                            var expectedToken = entry.GetOriginalValue(concurrencyProperty.Name);
 
-                            // Reload from database to check current token
-                            var dbEntity = await _client.GetAsync(recordId, entity.GetType(), cancellationToken)
+                            // Load from database to check current token
+                            // Use QueryAsync since GetAsync<T> requires a compile-time type
+                            var dbResult = await _client.QueryAsync($"SELECT * FROM {recordId};", null, cancellationToken)
                                 .ConfigureAwait(false);
+                            var dbEntity = dbResult.Data;
 
                             if (dbEntity != null)
                             {
@@ -272,7 +274,7 @@ internal class SurrealDbSession : ISurrealDbSession
             var entry = _changeTracker.Entry(entity);
             if (entry.State != EntityState.Detached)
             {
-                entry.Reload();
+                entry.State = EntityState.Unchanged;
             }
         }
     }

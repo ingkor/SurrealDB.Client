@@ -26,7 +26,7 @@ public class InMemoryEventStore : IEventStore
 
         lock (_lock)
         {
-            @event.Version = ++_eventCounter;
+            if (@event is DomainEventBase mutableEvent) mutableEvent.Version = ++_eventCounter;
 
             _events.AddOrUpdate(
                 @event.AggregateId,
@@ -52,7 +52,7 @@ public class InMemoryEventStore : IEventStore
         {
             foreach (var @event in eventList)
             {
-                @event.Version = ++_eventCounter;
+                if (@event is DomainEventBase mutableEvent) mutableEvent.Version = ++_eventCounter;
 
                 _events.AddOrUpdate(
                     @event.AggregateId,
