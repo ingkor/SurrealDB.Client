@@ -123,7 +123,7 @@ public class AuthenticationTests
     public void TokenAuthenticationProvider_NullToken_Throws()
     {
         // Arrange, Act & Assert
-        Assert.Throws<ValidationException>(() => new TokenAuthenticationProvider(null!));
+        Assert.Throws<ValidationException>(() => new TokenAuthenticationProvider((string)null!));
     }
 
     [Fact]

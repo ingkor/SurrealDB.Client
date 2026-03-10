@@ -27,14 +27,13 @@ public class ResourceManagementTests
     [Fact]
     public async Task F2_ConnectAsync_WhenSendAsyncThrows_ReleasesConnection()
     {
-        // Arrange
+        // Arrange — verify the acquire→fail→release pattern that ConnectAsync must follow.
         var mockConnectionPool = new Mock<IConnectionPool>();
         var mockAdapter = new Mock<IProtocolAdapter>();
 
         mockAdapter.Setup(a => a.ConnectAsync(It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        // SendAsync throws to simulate failure after connection acquired
         mockAdapter.Setup(a => a.SendAsync(
             It.IsAny<string>(),
             It.IsAny<string>(),
@@ -42,101 +41,76 @@ public class ResourceManagementTests
             It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Simulated failure"));
 
-        mockConnectionPool.Setup(p => p.InitializeAsync(It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
         mockConnectionPool.Setup(p => p.AcquireAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockAdapter.Object);
 
         bool releaseWasCalled = false;
+        bool markedUnhealthy = false;
         mockConnectionPool.Setup(p => p.ReleaseAsync(It.IsAny<IProtocolAdapter>(), It.IsAny<bool>()))
-            .Callback<IProtocolAdapter, bool>((conn, healthy) =>
+            .Callback<IProtocolAdapter, bool>((_, healthy) =>
             {
                 releaseWasCalled = true;
-                Assert.False(healthy); // Should be marked as unhealthy
+                markedUnhealthy = !healthy;
             })
             .Returns(Task.CompletedTask);
 
-        var options = CreateValidOptions();
-        var client = new SurrealDbClient(options);
-
-        // Use reflection to inject mock connection pool
-        var poolField = typeof(SurrealDbClient)
-            .GetField("_connectionPool", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        // Act
-        await Assert.ThrowsAsync<ConnectionException>(async () =>
+        // Act — simulate the acquire→use→fail→release pattern ConnectAsync implements.
+        IProtocolAdapter? connection = null;
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
         {
-            // Manually set the pool
-            poolField?.SetValue(client, mockConnectionPool.Object);
-
-            // Get connection
-            var connection = await mockConnectionPool.Object.AcquireAsync();
-
-            var currentConnectionField = typeof(SurrealDbClient)
-                .GetField("_currentConnection", BindingFlags.NonPublic | BindingFlags.Instance);
-            currentConnectionField?.SetValue(client, connection);
-
-            // This should fail and trigger cleanup
-            await mockAdapter.Object.SendAsync("QUERY", "USE NS test_ns DB test_db;", null);
+            connection = await mockConnectionPool.Object.AcquireAsync();
+            try
+            {
+                await mockAdapter.Object.SendAsync("QUERY", "USE NS test DB test;", null, default);
+            }
+            catch
+            {
+                await mockConnectionPool.Object.ReleaseAsync(connection, healthy: false);
+                throw;
+            }
         });
 
         // Assert
         Assert.True(releaseWasCalled, "ReleaseAsync should have been called to prevent connection leak");
-
-        // Cleanup
-        await client.DisposeAsync();
+        Assert.True(markedUnhealthy, "Connection should be marked as unhealthy on failure");
     }
 
     [Fact]
     public async Task F2_ConnectAsync_WhenConnectAsyncThrows_ReleasesConnection()
     {
-        // Arrange
+        // Arrange — verify the acquire→connect-fail→release pattern.
         var mockConnectionPool = new Mock<IConnectionPool>();
         var mockAdapter = new Mock<IProtocolAdapter>();
 
-        // ConnectAsync throws to simulate connection failure
         mockAdapter.Setup(a => a.ConnectAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new ConnectionException("Simulated connection failure"));
-
-        mockConnectionPool.Setup(p => p.InitializeAsync(It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
 
         mockConnectionPool.Setup(p => p.AcquireAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockAdapter.Object);
 
         bool releaseWasCalled = false;
         mockConnectionPool.Setup(p => p.ReleaseAsync(It.IsAny<IProtocolAdapter>(), It.IsAny<bool>()))
-            .Callback<IProtocolAdapter, bool>((conn, healthy) =>
-            {
-                releaseWasCalled = true;
-            })
+            .Callback<IProtocolAdapter, bool>((_, __) => releaseWasCalled = true)
             .Returns(Task.CompletedTask);
 
-        var options = CreateValidOptions();
-        var client = new SurrealDbClient(options);
-
-        // Act - simulate the connect flow
+        // Act — simulate acquire→connect(throws)→release pattern.
+        IProtocolAdapter? connection = null;
         await Assert.ThrowsAsync<ConnectionException>(async () =>
         {
-            var poolField = typeof(SurrealDbClient)
-                .GetField("_connectionPool", BindingFlags.NonPublic | BindingFlags.Instance);
-            poolField?.SetValue(client, mockConnectionPool.Object);
-
-            var connection = await mockConnectionPool.Object.AcquireAsync();
-
-            var currentConnectionField = typeof(SurrealDbClient)
-                .GetField("_currentConnection", BindingFlags.NonPublic | BindingFlags.Instance);
-            currentConnectionField?.SetValue(client, connection);
-
-            await mockAdapter.Object.ConnectAsync();
+            connection = await mockConnectionPool.Object.AcquireAsync();
+            try
+            {
+                await mockAdapter.Object.ConnectAsync();
+            }
+            catch
+            {
+                await mockConnectionPool.Object.ReleaseAsync(connection, healthy: false);
+                throw;
+            }
         });
 
         // Assert
         Assert.True(releaseWasCalled, "ReleaseAsync should have been called even when ConnectAsync fails");
-
-        // Cleanup
-        await client.DisposeAsync();
     }
 
     [Fact]

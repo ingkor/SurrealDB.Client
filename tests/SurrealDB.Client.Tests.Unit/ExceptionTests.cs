@@ -1,5 +1,6 @@
 using Xunit;
 using SurrealDB.Client.Exceptions;
+using SurrealDbTimeoutException = SurrealDB.Client.Exceptions.TimeoutException;
 
 namespace SurrealDB.Client.Tests.Unit;
 
@@ -100,10 +101,10 @@ public class ExceptionTests
     public void TimeoutException_IsCreated()
     {
         // Arrange & Act
-        var exception = new TimeoutException("Operation timed out");
+        var exception = new SurrealDbTimeoutException("Operation timed out");
 
         // Assert
         Assert.NotNull(exception);
-        Assert.IsType<TimeoutException>(exception);
+        Assert.IsType<SurrealDbTimeoutException>(exception);
     }
 }

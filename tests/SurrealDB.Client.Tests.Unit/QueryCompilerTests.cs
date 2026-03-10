@@ -3,6 +3,7 @@ namespace SurrealDB.Client.Tests.Unit;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using SurrealDB.Client.Query;
 using Xunit;
 
 [Trait("Category", "Unit")]

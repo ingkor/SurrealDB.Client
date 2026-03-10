@@ -14,7 +14,12 @@
       "Bash(git merge:*)",
       "Bash(dotnet:*)",
       "Bash(aspire mcp:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:aspire.dev)",
+      "Bash(cmd:*)",
+      "Bash(aspire run:*)",
+      "Bash(powershell:*)"
     ]
   }
 }

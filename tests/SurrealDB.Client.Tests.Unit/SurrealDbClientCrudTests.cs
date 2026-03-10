@@ -1,6 +1,7 @@
 namespace SurrealDB.Client.Tests.Unit;
 
 using Mocks;
+using SurrealDB.Client.Serialization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;

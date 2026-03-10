@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Aspire.AppHost.Sdk/13.1.2">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -6,11 +6,6 @@
         <Nullable>enable</Nullable>
         <UserSecretsId>surreal-apphost</UserSecretsId>
     </PropertyGroup>
-
-    <ItemGroup>
-        <PackageReference Include="Aspire.Hosting" Version="9.2.0" />
-        <PackageReference Include="Aspire.Hosting.AppHost" Version="9.2.0" />
-    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\..\samples\SurrealDB.Client.Sample.Api\SurrealDB.Client.Sample.Api.csproj" />
