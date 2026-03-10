@@ -1,11 +1,13 @@
 namespace SurrealDB.Client;
 
+using System.Reflection;
 using System.Text.Json;
 using Authentication;
 using Caching;
 using Connection;
 using Exceptions;
 using Interceptors;
+using Migrations;
 using Plugins;
 using Protocol;
 using Serialization;
@@ -850,6 +852,30 @@ public class SurrealDbClient : ISurrealDbClient
     }
 
     #endregion
+
+    // -------------------------------------------------------------------------
+    // Migrations
+    // -------------------------------------------------------------------------
+
+    /// <inheritdoc/>
+    public async Task MigrateAsync(Assembly migrationsAssembly, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!_isConnected)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+        var runner = new SurrealMigrationRunner(this);
+        await runner.MigrateAsync(migrationsAssembly, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task RollbackAsync(string migrationName, Assembly migrationsAssembly, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!_isConnected)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+        var runner = new SurrealMigrationRunner(this);
+        await runner.RollbackAsync(migrationName, migrationsAssembly, cancellationToken).ConfigureAwait(false);
+    }
 }
 
 /// <summary>

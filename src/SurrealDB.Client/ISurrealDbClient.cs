@@ -1,5 +1,7 @@
 namespace SurrealDB.Client;
 
+using System.Reflection;
+using Migrations;
 using Session;
 
 /// <summary>
@@ -201,6 +203,23 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <returns>A transaction object.</returns>
     /// <exception cref="QueryException">Thrown if the transaction cannot be started.</exception>
     Task<ISurrealDbTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+
+    #endregion
+
+    #region Migrations
+
+    /// <summary>
+    /// Discovers all <see cref="Migration"/> subclasses in <paramref name="migrationsAssembly"/>
+    /// and applies any that have not yet been recorded in the <c>_migrations</c> history table.
+    /// This method is idempotent: running it when all migrations are applied does nothing.
+    /// </summary>
+    Task MigrateAsync(Assembly migrationsAssembly, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rolls back the migration named <paramref name="migrationName"/> by calling its
+    /// <see cref="Migration.Down"/> method and removing it from the history table.
+    /// </summary>
+    Task RollbackAsync(string migrationName, Assembly migrationsAssembly, CancellationToken cancellationToken = default);
 
     #endregion
 }
