@@ -109,6 +109,13 @@ public interface ISurrealDbSession : IAsyncDisposable
     /// Gets whether the session is disposed.
     /// </summary>
     bool IsDisposed { get; }
+
+    /// <summary>
+    /// Sets the current user ID used to populate <c>[CreatedBy]</c> and <c>[UpdatedBy]</c>
+    /// audit properties on entities during <see cref="SaveChangesAsync"/>.
+    /// Pass <see langword="null"/> to clear the user ID (anonymous operations).
+    /// </summary>
+    void SetCurrentUser(string? userId);
 }
 
 /// <summary>

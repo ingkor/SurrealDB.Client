@@ -1,6 +1,7 @@
 namespace SurrealDB.Client.Session;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -9,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Concurrency;
 using Query;
+using SurrealDB.Client.Security;
 
 /// <summary>
 /// Implementation of ISurrealDbSession providing Unit of Work pattern.
@@ -19,6 +21,13 @@ internal class SurrealDbSession : ISurrealDbSession
     private readonly ChangeTracker _changeTracker;
     private bool _disposed;
     private SurrealDbSessionTransaction? _transaction;
+    private string? _currentUserId;
+
+    // Reflection cache — populated once per type, then lock-free reads
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _createdAtProps = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _updatedAtProps = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _createdByProps = new();
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _updatedByProps = new();
 
     public SurrealDbSession(SurrealDbClient client)
     {
@@ -151,6 +160,7 @@ internal class SurrealDbSession : ISurrealDbSession
         foreach (var entity in addedEntities)
         {
             var tableName = GetTableName(entity.GetType());
+            try { ApplyAuditAttributes(entity, isInsert: true); } catch { /* suppress */ }
             await _client.CreateAsync(tableName, entity, cancellationToken).ConfigureAwait(false);
 
             var entry = _changeTracker.Entry(entity);
@@ -205,6 +215,7 @@ internal class SurrealDbSession : ISurrealDbSession
                             }
                         }
 
+                        try { ApplyAuditAttributes(entity, isInsert: false); } catch { /* suppress */ }
                         await _client.UpdateAsync(recordId, entity, cancellationToken).ConfigureAwait(false);
                         entry.State = EntityState.Unchanged;
                         affectedCount++;
@@ -300,10 +311,65 @@ internal class SurrealDbSession : ISurrealDbSession
         }
     }
 
+    /// <inheritdoc/>
+    public void SetCurrentUser(string? userId) => _currentUserId = userId;
+
     private void ThrowIfDisposed()
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SurrealDbSession));
+    }
+
+    private static PropertyInfo[] GetPropertiesWithAttribute<TAttr>(Type type) where TAttr : Attribute
+        => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+               .Where(p => p.GetCustomAttribute<TAttr>() != null && p.CanWrite)
+               .ToArray();
+
+    /// <summary>
+    /// Applies audit attributes to <paramref name="entity"/> before persistence.
+    /// All exceptions are suppressed — audit is best-effort.
+    /// </summary>
+    private void ApplyAuditAttributes(object entity, bool isInsert)
+    {
+        var type = entity.GetType();
+        var now = DateTime.UtcNow;
+
+        if (isInsert)
+        {
+            foreach (var prop in _createdAtProps.GetOrAdd(type, t => GetPropertiesWithAttribute<CreatedAtAttribute>(t)))
+            {
+                if (prop.PropertyType == typeof(DateTime) || prop.PropertyType == typeof(DateTime?))
+                    prop.SetValue(entity, now);
+                else if (prop.PropertyType == typeof(DateTimeOffset) || prop.PropertyType == typeof(DateTimeOffset?))
+                    prop.SetValue(entity, new DateTimeOffset(now));
+            }
+
+            if (_currentUserId != null)
+            {
+                foreach (var prop in _createdByProps.GetOrAdd(type, t => GetPropertiesWithAttribute<CreatedByAttribute>(t)))
+                {
+                    if (prop.PropertyType == typeof(string))
+                        prop.SetValue(entity, _currentUserId);
+                }
+            }
+        }
+
+        foreach (var prop in _updatedAtProps.GetOrAdd(type, t => GetPropertiesWithAttribute<UpdatedAtAttribute>(t)))
+        {
+            if (prop.PropertyType == typeof(DateTime) || prop.PropertyType == typeof(DateTime?))
+                prop.SetValue(entity, now);
+            else if (prop.PropertyType == typeof(DateTimeOffset) || prop.PropertyType == typeof(DateTimeOffset?))
+                prop.SetValue(entity, new DateTimeOffset(now));
+        }
+
+        if (_currentUserId != null)
+        {
+            foreach (var prop in _updatedByProps.GetOrAdd(type, t => GetPropertiesWithAttribute<UpdatedByAttribute>(t)))
+            {
+                if (prop.PropertyType == typeof(string))
+                    prop.SetValue(entity, _currentUserId);
+            }
+        }
     }
 
     private Dictionary<string, object?> ExtractSnapshot<T>(T entity) where T : class

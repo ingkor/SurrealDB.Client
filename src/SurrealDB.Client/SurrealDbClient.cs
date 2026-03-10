@@ -239,13 +239,15 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
+        if (!_isConnected || _currentConnection == null)
+            return false;
         try
         {
-            // TODO: Implement health check
-            return _isConnected;
+            return await _currentConnection.HealthCheckAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
+            _isConnected = false;
             return false;
         }
     }
@@ -415,8 +417,18 @@ public class SurrealDbClient : ISurrealDbClient
                 _authSession = null;
             }
 
-            // TODO: Send logout command to server
-            await Task.CompletedTask;
+            // Send INVALIDATE to clear the server-side session
+            if (_currentConnection != null)
+            {
+                try
+                {
+                    await _currentConnection.SendAsync(ProtocolMethods.Query, "INVALIDATE;", null, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Suppress — best-effort server invalidation; local session is already cleared
+                }
+            }
         }
         catch (Exception ex)
         {
