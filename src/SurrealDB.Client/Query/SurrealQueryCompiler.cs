@@ -131,8 +131,8 @@ internal class SurrealQLExpressionVisitor : ExpressionVisitor
             // First argument is the source (previous query)
             Visit(node.Arguments[0]);
 
-            // Second argument is the predicate lambda
-            if (node.Arguments[1] is LambdaExpression lambda)
+            // Second argument is the predicate lambda (may be Quote-wrapped in IQueryable LINQ)
+            if (UnwrapLambda(node.Arguments[1]) is { } lambda)
             {
                 _inWhere = true;
                 _whereClause = VisitLambdaToSQL(lambda);
@@ -143,28 +143,22 @@ internal class SurrealQLExpressionVisitor : ExpressionVisitor
         {
             Visit(node.Arguments[0]);
 
-            if (node.Arguments[1] is LambdaExpression lambda)
-            {
+            if (UnwrapLambda(node.Arguments[1]) is { } lambda)
                 _orderByClause = VisitOrderByLambda(lambda, ascending: true);
-            }
         }
         else if (method.Name == "OrderByDescending" && node.Arguments.Count == 2)
         {
             Visit(node.Arguments[0]);
 
-            if (node.Arguments[1] is LambdaExpression lambda)
-            {
+            if (UnwrapLambda(node.Arguments[1]) is { } lambda)
                 _orderByClause = VisitOrderByLambda(lambda, ascending: false);
-            }
         }
         else if (method.Name == "Select" && node.Arguments.Count == 2)
         {
             Visit(node.Arguments[0]);
 
-            if (node.Arguments[1] is LambdaExpression lambda)
-            {
+            if (UnwrapLambda(node.Arguments[1]) is { } lambda)
                 _selectClause = VisitSelectLambda(lambda);
-            }
         }
         else if (method.Name == "Take" && node.Arguments.Count == 2)
         {
@@ -307,26 +301,94 @@ internal class SurrealQLExpressionVisitor : ExpressionVisitor
     /// <summary>
     /// Visits a lambda for SELECT clause (projection).
     /// </summary>
+    /// <summary>
+    /// Converts a LINQ Select lambda to a SurrealQL SELECT clause.
+    /// Supports single-property, anonymous object, and aliased projections.
+    /// Falls back to "SELECT *" for unrecognized patterns.
+    /// <para>
+    /// NOTE: Projections that change the result type (e.g. anonymous objects) will cause
+    /// deserialization failures at runtime unless QueryAsync&lt;T&gt; uses a matching T.
+    /// </para>
+    /// </summary>
     private string VisitSelectLambda(LambdaExpression lambda)
     {
-        // For now, support simple projections
-        // Full support would map all properties in the expression
+        var param = lambda.Parameters[0];
+        var body = lambda.Body;
+
+        // Pattern 1: single member access — .Select(u => u.Name)
+        if (body is MemberExpression memberExpr &&
+            memberExpr.Expression is ParameterExpression pe &&
+            pe.Name == param.Name)
+        {
+            return "SELECT " + ToSnakeCase(memberExpr.Member.Name);
+        }
+
+        // Pattern 2 & 3: anonymous type new { } — .Select(u => new { u.Name, u.Email })
+        //                                          .Select(u => new { FullName = u.Name, u.Email })
+        if (body is NewExpression newExpr)
+        {
+            if (newExpr.Arguments.Count == 0)
+                return "SELECT *";
+
+            var columns = new List<string>();
+            for (int i = 0; i < newExpr.Arguments.Count; i++)
+            {
+                var arg = newExpr.Arguments[i];
+                var memberName = newExpr.Members?[i]?.Name; // alias (may be same as source)
+
+                if (arg is MemberExpression argMember &&
+                    argMember.Expression is ParameterExpression ap &&
+                    ap.Name == param.Name)
+                {
+                    var sourceCol = ToSnakeCase(argMember.Member.Name);
+                    var aliasCol = memberName != null ? ToSnakeCase(memberName) : null;
+
+                    // Emit AS alias only when the alias differs from the source column
+                    columns.Add(aliasCol != null && aliasCol != sourceCol
+                        ? $"{sourceCol} AS {aliasCol}"
+                        : sourceCol);
+                }
+                else
+                {
+                    // Unrecognized argument (nested property, method call, etc.) → fall back
+                    return "SELECT *";
+                }
+            }
+            return "SELECT " + string.Join(", ", columns);
+        }
+
+        // Pattern 4: constant value — .Select(u => 1)
+        if (body is ConstantExpression constBody)
+            return $"SELECT {constBody.Value}";
+
+        // Fallback for unrecognized patterns (method calls, nested properties, etc.)
         return "SELECT *";
     }
 
     /// <summary>
-    /// Visits a Constant expression and extracts table name.
+    /// Visits a Constant expression and extracts table name from ISurrealDbQueryMetadata.
+    /// An explicitly-provided table name (set via constructor) takes precedence.
     /// </summary>
     protected override Expression? VisitConstant(ConstantExpression node)
     {
-        if (node.Value?.GetType() is { IsGenericType: true } t &&
-            t.GetGenericTypeDefinition() == typeof(SurrealDbQuery<>))
-        {
-            // Extract table name from SurrealDbQuery metadata if available
-            _tableName = "unknown_table";
-        }
+        // Only use metadata table name if no explicit table was provided
+        if (_tableName == null && node.Value is ISurrealDbQueryMetadata meta && meta.TableName != null)
+            _tableName = meta.TableName;
 
         return base.VisitConstant(node);
+    }
+
+    /// <summary>
+    /// Unwraps a Quote-wrapped lambda expression, or returns the expression itself
+    /// if it is already a LambdaExpression. Returns null for unrecognized forms.
+    /// </summary>
+    private static LambdaExpression? UnwrapLambda(Expression expr)
+    {
+        if (expr is LambdaExpression lambda)
+            return lambda;
+        if (expr is UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression quotedLambda })
+            return quotedLambda;
+        return null;
     }
 
     /// <summary>

@@ -7,30 +7,44 @@ using System.Linq;
 using System.Linq.Expressions;
 
 /// <summary>
+/// Internal interface that exposes query metadata (table name) to the expression compiler.
+/// </summary>
+internal interface ISurrealDbQueryMetadata
+{
+    string? TableName { get; }
+}
+
+/// <summary>
 /// IQueryable<T> implementation for SurrealDB queries.
 /// Enables LINQ-style query composition with deferred execution.
 /// </summary>
-public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T>
+public class SurrealDbQuery<T> : IQueryable<T>, IEnumerable<T>, ISurrealDbQueryMetadata
 {
     private readonly IQueryProvider _provider;
     private readonly Expression _expression;
+    private readonly string? _tableName;
 
     /// <summary>
-    /// Creates a new SurrealDB query.
+    /// Creates a new SurrealDB query with an optional table name.
     /// </summary>
-    public SurrealDbQuery(IQueryProvider provider)
-        : this(provider, Expression.Constant(new SurrealDbQuery<T>(provider, null!)))
+    public SurrealDbQuery(IQueryProvider provider, string? tableName = null)
+        : this(provider, null!, tableName)
     {
+        _expression = Expression.Constant(this);
     }
 
     /// <summary>
     /// Creates a new SurrealDB query with a specific expression.
     /// </summary>
-    public SurrealDbQuery(IQueryProvider provider, Expression expression)
+    public SurrealDbQuery(IQueryProvider provider, Expression expression, string? tableName = null)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _expression = expression ?? Expression.Constant(this);
+        _tableName = tableName;
     }
+
+    /// <inheritdoc/>
+    string? ISurrealDbQueryMetadata.TableName => _tableName;
 
     /// <summary>
     /// Gets the element type.
