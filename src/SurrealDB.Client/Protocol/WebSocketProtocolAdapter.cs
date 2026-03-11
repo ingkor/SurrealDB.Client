@@ -28,6 +28,7 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
     private bool _disposed;
     private int _requestId = 0;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _receiveLock = new(1, 1);
 
     /// <summary>
     /// Maximum allowed response size (50 MB). Prevents OOM attacks from oversized messages.
@@ -157,7 +158,15 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 cts.Token);
 
             // Receive and accumulate all WebSocket frames until EndOfMessage
-            return await ReceiveFullMessageAsync(_webSocket, cts.Token);
+            await _receiveLock.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                return await ReceiveFullMessageAsync(_webSocket, cts.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                _receiveLock.Release();
+            }
         }
         catch (OperationCanceledException)
         {
@@ -222,7 +231,16 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 cts.Token);
 
             // Receive and accumulate all WebSocket frames until EndOfMessage
-            var response = await ReceiveFullMessageAsync(_webSocket, cts.Token);
+            string response;
+            await _receiveLock.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                response = await ReceiveFullMessageAsync(_webSocket, cts.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                _receiveLock.Release();
+            }
 
             // F6 Fix: Parse JSON and check for root-level error property instead of string search
             if (HasRootLevelError(response))
@@ -264,8 +282,16 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
 
             // Use the same receive path as all other methods to handle multi-frame responses
             // If server sends multi-frame pong, single-frame receive would leave stale data
-            var response = await ReceiveFullMessageAsync(_webSocket, cts.Token);
-            return !string.IsNullOrEmpty(response);
+            await _receiveLock.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                var response = await ReceiveFullMessageAsync(_webSocket, cts.Token).ConfigureAwait(false);
+                return !string.IsNullOrEmpty(response);
+            }
+            finally
+            {
+                _receiveLock.Release();
+            }
         }
         catch
         {
@@ -291,6 +317,9 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
 
                 _webSocket.Dispose();
             }
+
+            _sendLock.Dispose();
+            _receiveLock.Dispose();
         }
         catch
         {

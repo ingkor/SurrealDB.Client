@@ -3,7 +3,7 @@ namespace SurrealDB.Client.Exceptions;
 /// <summary>
 /// Thrown when an operation times out.
 /// </summary>
-public class TimeoutException : SurrealDbException
+public class TimeoutException : SurrealDbException, ITransientException
 {
     public TimeoutException(string message)
         : base(message)

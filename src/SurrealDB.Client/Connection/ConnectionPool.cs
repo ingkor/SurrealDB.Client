@@ -94,6 +94,7 @@ internal class ConnectionPool : IConnectionPool
                     pooledConnection.LastUsedAt = DateTime.UtcNow;
                     pooledConnection.UsageCount++;
                     Interlocked.Increment(ref _totalAcquisitions);
+                    Diagnostics.SurrealDbMetrics.PoolAcquired.Add(1);
                     return pooledConnection.Adapter;
                 }
 
@@ -109,6 +110,7 @@ internal class ConnectionPool : IConnectionPool
             {
                 if (_allConnections.Count >= _options.PoolSize)
                 {
+                    Diagnostics.SurrealDbMetrics.PoolExhausted.Add(1);
                     throw new ConnectionException("Connection pool exhausted and cannot create new connections");
                 }
 
@@ -143,10 +145,12 @@ internal class ConnectionPool : IConnectionPool
             }
 
             Interlocked.Increment(ref _totalAcquisitions);
+            Diagnostics.SurrealDbMetrics.PoolAcquired.Add(1);
             return pooledConnection.Adapter;
         }
         catch (TimeoutException ex)
         {
+            Diagnostics.SurrealDbMetrics.PoolExhausted.Add(1);
             _acquireSemaphore.Release();
             throw new ConnectionException("Failed to acquire connection within timeout period", ex);
         }
@@ -178,6 +182,7 @@ internal class ConnectionPool : IConnectionPool
 
         pooledConnection.InUse = false;
         Interlocked.Increment(ref _totalReleases);
+        Diagnostics.SurrealDbMetrics.PoolReleased.Add(1);
 
         if (healthy)
         {

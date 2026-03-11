@@ -53,7 +53,7 @@ internal class SurrealDbSession : ISurrealDbSession
             table,
             _client.QueryCache,
             interceptors);
-        return new SurrealDbQuery<T>(provider);
+        return new SurrealDbQuery<T>(provider, tableName: table);
     }
 
     public void Add<T>(T entity) where T : class
@@ -157,15 +157,32 @@ internal class SurrealDbSession : ISurrealDbSession
         var affectedCount = 0;
 
         // Execute INSERTS for Added entities
-        foreach (var entity in addedEntities)
+        if (addedEntities.Count >= _client.Options.BatchThreshold)
         {
-            var tableName = GetTableName(entity.GetType());
-            try { ApplyAuditAttributes(entity, isInsert: true); } catch { /* suppress */ }
-            await _client.CreateAsync(tableName, entity, cancellationToken).ConfigureAwait(false);
+            foreach (var group in addedEntities.GroupBy(e => GetTableName(e.GetType())))
+            {
+                foreach (var entity in group)
+                    try { ApplyAuditAttributes(entity, isInsert: true); } catch { /* suppress */ }
+                var typedData = group.Cast<object>().ToList();
+                await _client.CreateManyAsync<object>(group.Key, typedData, cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (var entity in group)
+                    _changeTracker.Entry(entity).State = EntityState.Unchanged;
+                affectedCount += typedData.Count;
+            }
+        }
+        else
+        {
+            foreach (var entity in addedEntities)
+            {
+                var tableName = GetTableName(entity.GetType());
+                try { ApplyAuditAttributes(entity, isInsert: true); } catch { /* suppress */ }
+                await _client.CreateAsync(tableName, entity, cancellationToken).ConfigureAwait(false);
 
-            var entry = _changeTracker.Entry(entity);
-            entry.State = EntityState.Unchanged;
-            affectedCount++;
+                var entry = _changeTracker.Entry(entity);
+                entry.State = EntityState.Unchanged;
+                affectedCount++;
+            }
         }
 
         // Execute UPDATES for Modified entities
@@ -225,17 +242,42 @@ internal class SurrealDbSession : ISurrealDbSession
         }
 
         // Execute DELETES for Deleted entities
-        foreach (var entity in deletedEntities)
+        if (deletedEntities.Count >= _client.Options.BatchThreshold)
         {
-            var idProperty = entity.GetType().GetProperty("Id");
-            if (idProperty != null)
+            var idsToDelete = new List<string>();
+            var entitiesToDetach = new List<object>();
+            foreach (var entity in deletedEntities)
             {
-                var recordId = idProperty.GetValue(entity)?.ToString();
+                var idProperty = entity.GetType().GetProperty("Id");
+                var recordId = idProperty?.GetValue(entity)?.ToString();
                 if (recordId != null)
                 {
-                    await _client.DeleteAsync(recordId, cancellationToken).ConfigureAwait(false);
+                    idsToDelete.Add(recordId);
+                    entitiesToDetach.Add(entity);
+                }
+            }
+            if (idsToDelete.Count > 0)
+            {
+                await _client.DeleteManyAsync(idsToDelete, cancellationToken).ConfigureAwait(false);
+                foreach (var entity in entitiesToDetach)
                     _changeTracker.Detach(entity);
-                    affectedCount++;
+                affectedCount += idsToDelete.Count;
+            }
+        }
+        else
+        {
+            foreach (var entity in deletedEntities)
+            {
+                var idProperty = entity.GetType().GetProperty("Id");
+                if (idProperty != null)
+                {
+                    var recordId = idProperty.GetValue(entity)?.ToString();
+                    if (recordId != null)
+                    {
+                        await _client.DeleteAsync(recordId, cancellationToken).ConfigureAwait(false);
+                        _changeTracker.Detach(entity);
+                        affectedCount++;
+                    }
                 }
             }
         }
@@ -385,6 +427,12 @@ internal class SurrealDbSession : ISurrealDbSession
         return snapshot;
     }
 
+    internal async Task SendRollbackAsync(CancellationToken cancellationToken = default)
+    {
+        await _client.QueryAsync("ROLLBACK TRANSACTION;", null, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private string GetTableName(Type entityType)
     {
         // Get table name from entity type
@@ -415,7 +463,10 @@ internal class SurrealDbSessionTransaction : ISurrealDbSessionTransaction
         if (!_isActive)
             throw new InvalidOperationException("Transaction is not active");
 
-        // All SaveChangesAsync calls within the transaction will be committed
+        if (_session.HasChanges)
+            throw new InvalidOperationException(
+                "Cannot commit: session has unsaved changes. Call SaveChangesAsync before CommitAsync.");
+
         _isActive = false;
     }
 
@@ -425,6 +476,16 @@ internal class SurrealDbSessionTransaction : ISurrealDbSessionTransaction
             throw new InvalidOperationException("Transaction is not active");
 
         _session.Discard();
+
+        try
+        {
+            await _session.SendRollbackAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // suppress — if connection is gone we still want to clean up local state
+        }
+
         _isActive = false;
     }
 

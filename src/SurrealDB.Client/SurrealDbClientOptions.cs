@@ -1,6 +1,7 @@
 namespace SurrealDB.Client;
 
 using Exceptions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Configuration options for SurrealDbClient.
@@ -109,6 +110,23 @@ public class SurrealDbClientOptions
     public SerializerType SerializerType { get; set; } = SerializerType.SystemTextJson;
 
     /// <summary>
+    /// Maximum number of entries in the in-memory query cache.
+    /// 0 = unlimited (backward compatible default).
+    /// </summary>
+    public int CacheMaxItems { get; set; } = 0;
+
+    /// <summary>
+    /// Minimum number of entities that triggers the batch path in SaveChangesAsync.
+    /// Below this threshold, entities are saved one-by-one.
+    /// </summary>
+    public int BatchThreshold { get; set; } = 5;
+
+    /// <summary>
+    /// Optional logger factory for structured logging. Null = no logging (NullLoggerFactory).
+    /// </summary>
+    public ILoggerFactory? LoggerFactory { get; set; }
+
+    /// <summary>
     /// Validates the options.
     /// </summary>
     /// <exception cref="ValidationException">Thrown if options are invalid.</exception>
@@ -118,7 +136,28 @@ public class SurrealDbClientOptions
             throw new ValidationException("ConnectionString cannot be empty.");
 
         // SECURITY FIX: P0-2 - Validate connection string doesn't contain embedded credentials
+        // Must run before URI validation because embedded creds make URIs unparseable
         ValidateConnectionString(ConnectionString);
+
+        // URI format validation — only enforce when connection string looks like a URI
+        if (ConnectionString.Contains("://"))
+        {
+            if (!Uri.TryCreate(ConnectionString, UriKind.Absolute, out var uri))
+                throw new ValidationException(
+                    $"ConnectionString '{ConnectionString}' is not a valid absolute URI.");
+
+            if (!_validSchemes.Contains(uri.Scheme))
+                throw new ValidationException(
+                    $"ConnectionString scheme '{uri.Scheme}' is not supported. " +
+                    $"Valid schemes: {string.Join(", ", _validSchemes)}.");
+        }
+        else if (ConnectionString.Contains("//"))
+        {
+            // Looks like a malformed URI attempt (e.g. "surreal//localhost")
+            throw new ValidationException(
+                $"ConnectionString '{ConnectionString}' is not a valid absolute URI.");
+        }
+        // else: bare host:port like "localhost:8000" — allowed for backward compat
 
 
         if (string.IsNullOrWhiteSpace(Namespace))
@@ -155,7 +194,17 @@ public class SurrealDbClientOptions
 
         if (MaxRetryAttempts < 0)
             throw new ValidationException("MaxRetryAttempts cannot be negative.");
+
+        if (CacheMaxItems < 0)
+            throw new ValidationException("CacheMaxItems cannot be negative.");
+
+        if (BatchThreshold < 0)
+            throw new ValidationException("BatchThreshold cannot be negative.");
     }
+
+    private static readonly HashSet<string> _validSchemes =
+        new(StringComparer.OrdinalIgnoreCase)
+        { "surreal", "http", "https", "ws", "wss", "file" };
 
     /// <summary>
     /// SECURITY: Validates that the connection string doesn't contain embedded credentials.

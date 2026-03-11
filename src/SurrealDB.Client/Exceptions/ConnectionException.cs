@@ -3,7 +3,7 @@ namespace SurrealDB.Client.Exceptions;
 /// <summary>
 /// Thrown when a connection-related error occurs.
 /// </summary>
-public class ConnectionException : SurrealDbException
+public class ConnectionException : SurrealDbException, ITransientException
 {
     public ConnectionException(string message)
         : base(message)

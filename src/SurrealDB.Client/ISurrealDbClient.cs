@@ -161,6 +161,31 @@ public interface ISurrealDbClient : IAsyncDisposable
     /// <exception cref="QueryException">Thrown if the query fails.</exception>
     Task<T?> UpsertAsync<T>(string recordId, T data, CancellationToken cancellationToken = default) where T : class;
 
+    /// <summary>
+    /// Batch-creates multiple records in a single round trip.
+    /// Earlier chunks are NOT rolled back on failure — wrap in a transaction if needed.
+    /// </summary>
+    Task<IEnumerable<T?>> CreateManyAsync<T>(
+        string table,
+        IEnumerable<T> data,
+        CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Batch-updates multiple records by ID in a single round trip.
+    /// Earlier chunks are NOT rolled back on failure — wrap in a transaction if needed.
+    /// </summary>
+    Task<IEnumerable<T?>> UpdateManyAsync<T>(
+        IEnumerable<(string Id, T Data)> updates,
+        CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// Batch-deletes multiple records by ID in a single round trip.
+    /// Returns the count of records requested for deletion.
+    /// </summary>
+    Task<int> DeleteManyAsync(
+        IEnumerable<string> recordIds,
+        CancellationToken cancellationToken = default);
+
     #endregion
 
     #region Query Execution

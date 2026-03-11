@@ -9,7 +9,13 @@ using Exceptions;
 using Interceptors;
 using Migrations;
 using Plugins;
+using System.Diagnostics;
+using Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Polly;
 using Protocol;
+using Resilience;
 using Serialization;
 using Session;
 using Validation;
@@ -33,6 +39,8 @@ public class SurrealDbClient : ISurrealDbClient
     private readonly SemaphoreSlim _connectLock = new SemaphoreSlim(1, 1); // F4: Prevent concurrent ConnectAsync
     private readonly List<ISurrealDbInterceptor> _interceptors = new();
     private readonly IQueryCache _cache;
+    private readonly ResiliencePipeline<object?> _pipeline;
+    private readonly ILogger<SurrealDbClient> _logger;
     private readonly PluginManager _pluginManager = new();
     private IConnectionPool? _connectionPool;
     private IProtocolAdapter? _currentConnection;
@@ -40,6 +48,7 @@ public class SurrealDbClient : ISurrealDbClient
     // F8 Fix: Add volatile modifier to flag fields for thread-safety
     private volatile bool _isConnected;
     private volatile bool _disposed;
+    private Timer? _healthCheckTimer;
 
     /// <summary>
     /// Initializes a new instance of the SurrealDbClient class.
@@ -51,7 +60,9 @@ public class SurrealDbClient : ISurrealDbClient
         options.Validate();
         _options = options;
         _serializer = serializer ?? new SystemTextJsonSerializer();
-        _cache = new MemoryQueryCache();
+        _cache = new MemoryQueryCache(_options.CacheMaxItems);
+        _pipeline = ResiliencePipelineFactory.Create(_options);
+        _logger = (_options.LoggerFactory ?? NullLoggerFactory.Instance).CreateLogger<SurrealDbClient>();
     }
 
     /// <summary>
@@ -162,6 +173,32 @@ public class SurrealDbClient : ISurrealDbClient
                     throw new ConnectionException($"Failed to set namespace and database: {response}");
 
                 _isConnected = true;
+
+                // Start health check timer if enabled
+                if (_options.EnableHealthChecks)
+                {
+                    _healthCheckTimer?.Dispose();
+                    _healthCheckTimer = new Timer(
+                        async _ =>
+                        {
+                            try
+                            {
+                                var healthy = await IsConnectedAsync().ConfigureAwait(false);
+                                if (!healthy && _options.EnableAutoReconnect && !_disposed)
+                                {
+                                    _ = Task.Run(async () =>
+                                    {
+                                        try { await ConnectAsync().ConfigureAwait(false); }
+                                        catch { /* suppress — next tick will retry */ }
+                                    });
+                                }
+                            }
+                            catch { /* suppress — timer callback must never throw */ }
+                        },
+                        state: null,
+                        dueTime: _options.HealthCheckInterval,
+                        period: _options.HealthCheckInterval);
+                }
             }
             catch (Exception ex) when (!(ex is SurrealDbException))
             {
@@ -268,7 +305,6 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
-        // Validate inputs before checking connection state
         if (string.IsNullOrEmpty(username))
             throw new ValidationException("Username cannot be empty.");
         if (string.IsNullOrEmpty(password))
@@ -277,29 +313,30 @@ public class SurrealDbClient : ISurrealDbClient
         if (!_isConnected || _currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        // SECURITY: Dispose previous session if it exists
-        _authSession?.Dispose();
-
-        BasicAuthenticationProvider? provider = null;
-        try
+        await ExecuteWithResilienceAsync(async ct =>
         {
-            provider = new BasicAuthenticationProvider(username, password);
-            await provider.AuthenticateAsync(_currentConnection, cancellationToken);
+            _authSession?.Dispose();
 
-            _authSession = new AuthenticationSession
+            BasicAuthenticationProvider? provider = null;
+            try
             {
-                EstablishedAt = DateTime.UtcNow
-            };
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new AuthenticationException("Basic authentication failed", ex);
-        }
-        finally
-        {
-            // SECURITY: Always dispose the provider to clear credentials
-            provider?.Dispose();
-        }
+                provider = new BasicAuthenticationProvider(username, password);
+                await provider.AuthenticateAsync(_currentConnection, ct);
+
+                _authSession = new AuthenticationSession
+                {
+                    EstablishedAt = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new AuthenticationException("Basic authentication failed", ex);
+            }
+            finally
+            {
+                provider?.Dispose();
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -317,30 +354,31 @@ public class SurrealDbClient : ISurrealDbClient
         if (!_isConnected || _currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        // SECURITY: Dispose previous session if it exists
-        _authSession?.Dispose();
-
-        TokenAuthenticationProvider? provider = null;
-        try
+        await ExecuteWithResilienceAsync(async ct =>
         {
-            provider = new TokenAuthenticationProvider(token);
-            await provider.AuthenticateAsync(_currentConnection, cancellationToken);
+            _authSession?.Dispose();
 
-            _authSession = new AuthenticationSession
+            TokenAuthenticationProvider? provider = null;
+            try
             {
-                Token = token,
-                EstablishedAt = DateTime.UtcNow
-            };
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new AuthenticationException("Token authentication failed", ex);
-        }
-        finally
-        {
-            // SECURITY: Always dispose the provider to clear credentials
-            provider?.Dispose();
-        }
+                provider = new TokenAuthenticationProvider(token);
+                await provider.AuthenticateAsync(_currentConnection, ct);
+
+                _authSession = new AuthenticationSession
+                {
+                    Token = token,
+                    EstablishedAt = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new AuthenticationException("Token authentication failed", ex);
+            }
+            finally
+            {
+                provider?.Dispose();
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -408,32 +446,33 @@ public class SurrealDbClient : ISurrealDbClient
     {
         ThrowIfDisposed();
 
-        try
+        await ExecuteWithResilienceAsync(async ct =>
         {
-            // SECURITY: Dispose and clear the authentication session
-            if (_authSession != null)
+            try
             {
-                _authSession.Dispose();
-                _authSession = null;
-            }
+                if (_authSession != null)
+                {
+                    _authSession.Dispose();
+                    _authSession = null;
+                }
 
-            // Send INVALIDATE to clear the server-side session
-            if (_currentConnection != null)
-            {
-                try
+                if (_currentConnection != null)
                 {
-                    await _currentConnection.SendAsync(ProtocolMethods.Query, "INVALIDATE;", null, cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // Suppress — best-effort server invalidation; local session is already cleared
+                    try
+                    {
+                        await _currentConnection.SendAsync(ProtocolMethods.Query, "INVALIDATE;", null, ct).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Suppress — best-effort server invalidation
+                    }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            throw new ConnectionException("Logout failed", ex);
-        }
+            catch (Exception ex)
+            {
+                throw new ConnectionException("Logout failed", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -449,20 +488,23 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync(async ct =>
         {
-            var json = _serializer.Serialize(data);
-            var query = $"CREATE {table} CONTENT {json} RETURN AFTER;";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var json = _serializer.Serialize(data);
+                var query = $"CREATE {table} CONTENT {json} RETURN AFTER;";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
 
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result?.FirstOrDefault();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to create record in {table}", ex);
-        }
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result?.FirstOrDefault();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to create record in {table}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<T?>> CreateAsync<T>(string table, IEnumerable<T> data, CancellationToken cancellationToken = default)
@@ -474,20 +516,23 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync<IEnumerable<T?>>(async ct =>
         {
-            var results = new List<T?>();
-            foreach (var item in data)
+            try
             {
-                var result = await CreateAsync(table, item, cancellationToken).ConfigureAwait(false);
-                results.Add(result);
+                var results = new List<T?>();
+                foreach (var item in data)
+                {
+                    var result = await CreateAsync(table, item, ct).ConfigureAwait(false);
+                    results.Add(result);
+                }
+                return results;
             }
-            return results;
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to create records in {table}", ex);
-        }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to create records in {table}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<T?> GetAsync<T>(string recordId, CancellationToken cancellationToken = default)
@@ -499,19 +544,22 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync(async ct =>
         {
-            var query = $"SELECT * FROM {recordId};";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var query = $"SELECT * FROM {recordId};";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
 
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result?.FirstOrDefault();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to get record {recordId}", ex);
-        }
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result?.FirstOrDefault();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to get record {recordId}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<T>> SelectAsync<T>(string table, int limit = 1000, CancellationToken cancellationToken = default)
@@ -522,19 +570,22 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync<IEnumerable<T>>(async ct =>
         {
-            var query = $"SELECT * FROM {table} LIMIT {limit};";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var query = $"SELECT * FROM {table} LIMIT {limit};";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
 
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result ?? Enumerable.Empty<T>();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to select from {table}", ex);
-        }
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result ?? Enumerable.Empty<T>();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to select from {table}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -555,20 +606,23 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync(async ct =>
         {
-            var json = _serializer.Serialize(data);
-            var query = $"UPDATE {recordId} CONTENT {json} RETURN AFTER;";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var json = _serializer.Serialize(data);
+                var query = $"UPDATE {recordId} CONTENT {json} RETURN AFTER;";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
 
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result?.FirstOrDefault();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to update record {recordId}", ex);
-        }
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result?.FirstOrDefault();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to update record {recordId}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string recordId, CancellationToken cancellationToken = default)
@@ -579,17 +633,20 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        await ExecuteWithResilienceAsync(async ct =>
         {
-            var query = $"DELETE {recordId};";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
-            var envelope = _serializer.Deserialize<SurrealDbResponse<object>>(response);
-            envelope?.EnsureSuccess();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException($"Failed to delete record {recordId}", ex);
-        }
+            try
+            {
+                var query = $"DELETE {recordId};";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var envelope = _serializer.Deserialize<SurrealDbResponse<object>>(response);
+                envelope?.EnsureSuccess();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to delete record {recordId}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -604,20 +661,101 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync(async ct =>
         {
-            var json = _serializer.Serialize(data);
-            var query = $"UPSERT {recordId} CONTENT {json} RETURN AFTER;";
-            var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var json = _serializer.Serialize(data);
+                var query = $"UPSERT {recordId} CONTENT {json} RETURN AFTER;";
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
 
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result?.FirstOrDefault();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result?.FirstOrDefault();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException($"Failed to upsert record {recordId}", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IEnumerable<T?>> CreateManyAsync<T>(
+        string table, IEnumerable<T> data, CancellationToken cancellationToken = default) where T : class
+    {
+        ThrowIfDisposed();
+        ValidateTable(table);
+
+        if (_currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+
+        var list = data.ToList();
+        if (list.Count == 0) return Enumerable.Empty<T?>();
+
+        return await ExecuteWithResilienceAsync<IEnumerable<T?>>(async ct =>
         {
-            throw new QueryException($"Failed to upsert record {recordId}", ex);
-        }
+            var results = new List<T?>();
+            foreach (var chunk in Batch.BatchOperations.Chunk(list))
+            {
+                var jsonItems = chunk.Select(item => _serializer.Serialize(item)).ToList();
+                var sql = Batch.BatchOperations.BuildBatchInsert(EscapeIdentifier(table), jsonItems);
+                var queryResult = await QueryAsync<T>(sql, null, ct).ConfigureAwait(false);
+                results.AddRange(queryResult.Select(r => (T?)r));
+            }
+            return results;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IEnumerable<T?>> UpdateManyAsync<T>(
+        IEnumerable<(string Id, T Data)> updates, CancellationToken cancellationToken = default) where T : class
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(updates);
+
+        if (_currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+
+        var list = updates.ToList();
+        if (list.Count == 0) return Enumerable.Empty<T?>();
+
+        return await ExecuteWithResilienceAsync<IEnumerable<T?>>(async ct =>
+        {
+            var results = new List<T?>();
+            foreach (var chunk in Batch.BatchOperations.Chunk(list))
+            {
+                var items = chunk.Select(u => (EscapeIdentifier(u.Id), _serializer.Serialize(u.Data))).ToList();
+                var sql = Batch.BatchOperations.BuildBatchUpdate(items);
+                var queryResult = await QueryAsync<T>(sql, null, ct).ConfigureAwait(false);
+                results.AddRange(queryResult.Select(r => (T?)r));
+            }
+            return results;
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<int> DeleteManyAsync(
+        IEnumerable<string> recordIds, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        if (_currentConnection == null)
+            throw new ConnectionException("Not connected. Call ConnectAsync first.");
+
+        var list = recordIds.ToList();
+        if (list.Count == 0) return 0;
+
+        return await ExecuteWithResilienceAsync(async ct =>
+        {
+            var deleted = 0;
+            foreach (var chunk in Batch.BatchOperations.Chunk(list))
+            {
+                var escapedIds = chunk.Select(EscapeIdentifier).ToList();
+                var sql = Batch.BatchOperations.BuildBatchDelete(escapedIds);
+                await QueryAsync(sql, null, ct).ConfigureAwait(false);
+                deleted += chunk.Count;
+            }
+            return deleted;
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -635,21 +773,23 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync(async ct =>
         {
-            // Build parameterized query if parameters provided
-            var body = parameters != null
-                ? _serializer.Serialize(new { query = surrealQL, vars = parameters })
-                : _serializer.Serialize(new { query = surrealQL });
+            try
+            {
+                var body = parameters != null
+                    ? _serializer.Serialize(new { query = surrealQL, vars = parameters })
+                    : _serializer.Serialize(new { query = surrealQL });
 
-            var response = await _currentConnection.SendAsync("query", "/sql", body, cancellationToken).ConfigureAwait(false);
-            var result = _serializer.Deserialize<QueryResult>(response) ?? new QueryResult { Status = "OK" };
-            return result;
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException("Query execution failed", ex);
-        }
+                var response = await _currentConnection.SendAsync("query", "/sql", body, ct).ConfigureAwait(false);
+                var result = _serializer.Deserialize<QueryResult>(response) ?? new QueryResult { Status = "OK" };
+                return result;
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException("Query execution failed", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IEnumerable<T>> QueryAsync<T>(
@@ -663,22 +803,24 @@ public class SurrealDbClient : ISurrealDbClient
         if (_currentConnection == null)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
 
-        try
+        return await ExecuteWithResilienceAsync<IEnumerable<T>>(async ct =>
         {
-            // Build parameterized query if parameters provided
-            var body = parameters != null
-                ? _serializer.Serialize(new { query = surrealQL, vars = parameters })
-                : _serializer.Serialize(new { query = surrealQL });
+            try
+            {
+                var body = parameters != null
+                    ? _serializer.Serialize(new { query = surrealQL, vars = parameters })
+                    : _serializer.Serialize(new { query = surrealQL });
 
-            var response = await _currentConnection.SendAsync("query", "/sql", body, cancellationToken).ConfigureAwait(false);
-            var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
-            envelope?.EnsureSuccess();
-            return envelope?.Result ?? Enumerable.Empty<T>();
-        }
-        catch (Exception ex) when (!(ex is SurrealDbException))
-        {
-            throw new QueryException("Query execution failed", ex);
-        }
+                var response = await _currentConnection.SendAsync("query", "/sql", body, ct).ConfigureAwait(false);
+                var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
+                envelope?.EnsureSuccess();
+                return envelope?.Result ?? Enumerable.Empty<T>();
+            }
+            catch (Exception ex) when (!(ex is SurrealDbException))
+            {
+                throw new QueryException("Query execution failed", ex);
+            }
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -763,6 +905,10 @@ public class SurrealDbClient : ISurrealDbClient
                 _connectionPool = null;
             }
 
+            // Dispose health check timer
+            _healthCheckTimer?.Dispose();
+            _healthCheckTimer = null;
+
             // F4 Fix: Dispose semaphore
             try
             {
@@ -789,6 +935,86 @@ public class SurrealDbClient : ISurrealDbClient
     {
         if (_disposed)
             throw new ObjectDisposedException(nameof(SurrealDbClient));
+    }
+
+    private async Task<T> ExecuteWithResilienceAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken,
+        [System.Runtime.CompilerServices.CallerMemberName] string operationName = "")
+    {
+        using var activity = SurrealDbActivitySource.StartOperation($"surreal.{operationName}");
+        activity?.SetTag("db.system", "surrealdb");
+        var sw = Stopwatch.StartNew();
+
+        using var cts = CreateLinkedTimeout(cancellationToken);
+        try
+        {
+            _logger.LogDebug("Executing {Operation}", operationName);
+            var result = await _pipeline.ExecuteAsync(
+                async ct => (object?)await operation(ct).ConfigureAwait(false),
+                cts.Token).ConfigureAwait(false);
+            sw.Stop();
+            _logger.LogDebug("{Operation} completed in {ElapsedMs}ms", operationName, sw.ElapsedMilliseconds);
+            SurrealDbMetrics.OperationDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("operation", operationName));
+            return (T)result!;
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            if (ex is Exceptions.ITransientException)
+                _logger.LogWarning(ex, "Transient error in {Operation}", operationName);
+            else
+                _logger.LogError(ex, "Error in {Operation}", operationName);
+            SurrealDbMetrics.OperationDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("operation", operationName),
+                new KeyValuePair<string, object?>("error", "true"));
+            throw;
+        }
+    }
+
+    private async Task ExecuteWithResilienceAsync(
+        Func<CancellationToken, Task> operation,
+        CancellationToken cancellationToken,
+        [System.Runtime.CompilerServices.CallerMemberName] string operationName = "")
+    {
+        using var activity = SurrealDbActivitySource.StartOperation($"surreal.{operationName}");
+        activity?.SetTag("db.system", "surrealdb");
+        var sw = Stopwatch.StartNew();
+
+        using var cts = CreateLinkedTimeout(cancellationToken);
+        try
+        {
+            _logger.LogDebug("Executing {Operation}", operationName);
+            await _pipeline.ExecuteAsync(
+                async ct => { await operation(ct).ConfigureAwait(false); return (object?)null; },
+                cts.Token).ConfigureAwait(false);
+            sw.Stop();
+            _logger.LogDebug("{Operation} completed in {ElapsedMs}ms", operationName, sw.ElapsedMilliseconds);
+            SurrealDbMetrics.OperationDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("operation", operationName));
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            if (ex is Exceptions.ITransientException)
+                _logger.LogWarning(ex, "Transient error in {Operation}", operationName);
+            else
+                _logger.LogError(ex, "Error in {Operation}", operationName);
+            SurrealDbMetrics.OperationDuration.Record(sw.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("operation", operationName),
+                new KeyValuePair<string, object?>("error", "true"));
+            throw;
+        }
+    }
+
+    private CancellationTokenSource CreateLinkedTimeout(CancellationToken callerToken)
+    {
+        var timeoutCts = new CancellationTokenSource(_options.CommandTimeout);
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(callerToken, timeoutCts.Token);
+        return linkedCts;
     }
 
     /// <summary>
@@ -875,8 +1101,12 @@ public class SurrealDbClient : ISurrealDbClient
         ThrowIfDisposed();
         if (!_isConnected)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
-        var runner = new SurrealMigrationRunner(this);
-        await runner.MigrateAsync(migrationsAssembly, cancellationToken).ConfigureAwait(false);
+
+        await ExecuteWithResilienceAsync(async ct =>
+        {
+            var runner = new SurrealMigrationRunner(this);
+            await runner.MigrateAsync(migrationsAssembly, ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -885,8 +1115,12 @@ public class SurrealDbClient : ISurrealDbClient
         ThrowIfDisposed();
         if (!_isConnected)
             throw new ConnectionException("Not connected. Call ConnectAsync first.");
-        var runner = new SurrealMigrationRunner(this);
-        await runner.RollbackAsync(migrationName, migrationsAssembly, cancellationToken).ConfigureAwait(false);
+
+        await ExecuteWithResilienceAsync(async ct =>
+        {
+            var runner = new SurrealMigrationRunner(this);
+            await runner.RollbackAsync(migrationName, migrationsAssembly, ct).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
     }
 }
 

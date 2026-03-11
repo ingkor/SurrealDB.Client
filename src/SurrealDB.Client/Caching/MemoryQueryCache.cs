@@ -15,6 +15,15 @@ public class MemoryQueryCache : IQueryCache
     private long _misses;
     private readonly TimeSpan _defaultExpiration = TimeSpan.FromMinutes(5);
     private readonly object _statsLock = new();
+    private readonly int _maxItems;
+    private readonly LinkedList<string> _lruOrder = new();
+    private readonly Dictionary<string, LinkedListNode<string>> _lruNodes = new();
+    private readonly object _lruLock = new();
+
+    public MemoryQueryCache(int maxItems = 0)
+    {
+        _maxItems = maxItems;
+    }
 
     /// <summary>
     /// Gets a cached result.
@@ -30,8 +39,19 @@ public class MemoryQueryCache : IQueryCache
             if (entry.ExpiresAt.HasValue && DateTime.UtcNow > entry.ExpiresAt)
             {
                 _cache.TryRemove(key, out _);
+                lock (_lruLock) { if (_lruNodes.Remove(key, out var n)) _lruOrder.Remove(n); }
                 RecordMiss();
                 return default;
+            }
+
+            // Move to front (most recently used)
+            lock (_lruLock)
+            {
+                if (_lruNodes.TryGetValue(key, out var node))
+                {
+                    _lruOrder.Remove(node);
+                    _lruNodes[key] = _lruOrder.AddFirst(key);
+                }
             }
 
             RecordHit();
@@ -61,6 +81,23 @@ public class MemoryQueryCache : IQueryCache
             CreatedAt = DateTime.UtcNow
         };
 
+        lock (_lruLock)
+        {
+            if (_lruNodes.TryGetValue(key, out var existingNode))
+            {
+                _lruOrder.Remove(existingNode);
+            }
+            else if (_maxItems > 0 && _cache.Count >= _maxItems)
+            {
+                var lruKey = _lruOrder.Last!.Value;
+                _lruOrder.RemoveLast();
+                _lruNodes.Remove(lruKey);
+                _cache.TryRemove(lruKey, out _);
+            }
+
+            _lruNodes[key] = _lruOrder.AddFirst(key);
+        }
+
         _cache.AddOrUpdate(key, entry, (_, _) => entry);
     }
 
@@ -70,7 +107,10 @@ public class MemoryQueryCache : IQueryCache
     public void Remove(string key)
     {
         if (!string.IsNullOrEmpty(key))
+        {
             _cache.TryRemove(key, out _);
+            lock (_lruLock) { if (_lruNodes.Remove(key, out var node)) _lruOrder.Remove(node); }
+        }
     }
 
     /// <summary>
@@ -79,6 +119,7 @@ public class MemoryQueryCache : IQueryCache
     public void Clear()
     {
         _cache.Clear();
+        lock (_lruLock) { _lruOrder.Clear(); _lruNodes.Clear(); }
     }
 
     /// <summary>
@@ -102,21 +143,14 @@ public class MemoryQueryCache : IQueryCache
     /// </summary>
     private void RecordHit()
     {
-        lock (_statsLock)
-        {
-            _hits++;
-        }
+        lock (_statsLock) { _hits++; }
+        Diagnostics.SurrealDbMetrics.CacheHits.Add(1);
     }
 
-    /// <summary>
-    /// Records a cache miss.
-    /// </summary>
     private void RecordMiss()
     {
-        lock (_statsLock)
-        {
-            _misses++;
-        }
+        lock (_statsLock) { _misses++; }
+        Diagnostics.SurrealDbMetrics.CacheMisses.Add(1);
     }
 
     /// <summary>
