@@ -1,6 +1,8 @@
 namespace SurrealDB.Client.Tests.Integration;
 
+using Aspire.Hosting;
 using Aspire.Hosting.Testing;
+using SurrealDB.Client.Session;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -25,27 +27,18 @@ public class SurrealDbQueryIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Start Aspire application
-        _app = await DistributedApplicationTestingExtensions
-            .BuildAndStartAsync(typeof(global::SurrealDB.Client.AppHost.Program).Assembly);
+        var builder = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.SurrealDB_Client_AppHost>();
 
-        // Get endpoint
-        var appModel = _app.Services.GetRequiredService<DistributedApplicationModel>();
-        var resource = appModel.Resources.OfType<ContainerResource>()
-            .FirstOrDefault(r => r.Name == "surrealdb");
+        _app = await builder.BuildAsync();
+        await _app.StartAsync();
 
-        if (resource == null)
-            throw new InvalidOperationException("SurrealDB resource not found");
-
-        var endpoint = resource.Annotations
-            .OfType<EndpointAnnotation>()
-            .FirstOrDefault(e => e.Scheme == "http");
-
-        if (endpoint == null)
-            throw new InvalidOperationException("HTTP endpoint not found");
+        // Get endpoint via Aspire testing extension
+        var endpoint = _app.GetEndpoint("surrealdb", "http");
 
         var options = new SurrealDbClientOptions
         {
-            ConnectionString = $"surreal://localhost:{endpoint.Port}",
+            ConnectionString = $"surreal://{endpoint.Host}:{endpoint.Port}",
             Protocol = ProtocolType.WebSocket,
             Namespace = Namespace,
             Database = Database,
@@ -91,7 +84,10 @@ public class SurrealDbQueryIntegrationTests : IAsyncLifetime
             await _client.DisposeAsync();
 
         if (_app != null)
+        {
             await _app.StopAsync();
+            await _app.DisposeAsync();
+        }
     }
 
     [Fact]

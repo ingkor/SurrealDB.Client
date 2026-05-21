@@ -1,5 +1,6 @@
 namespace SurrealDB.Client.Tests.Integration;
 
+using Aspire.Hosting;
 using Aspire.Hosting.Testing;
 using System;
 using System.Linq;
@@ -14,6 +15,7 @@ using Xunit;
 [Trait("Category", "Integration")]
 public class SurrealDbClientIntegrationTests : IAsyncLifetime
 {
+    private DistributedApplicationFactory? _appFactory;
     private DistributedApplication? _app;
     private SurrealDbClient? _client;
 
@@ -25,32 +27,15 @@ public class SurrealDbClientIntegrationTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Start the Aspire application (which includes SurrealDB container)
-        _app = await DistributedApplicationTestingExtensions
-            .BuildAndStartAsync(typeof(global::SurrealDB.Client.AppHost.Program).Assembly);
+        var builder = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.SurrealDB_Client_AppHost>();
 
-        // Get the SurrealDB resource from Aspire
-        var appModel = _app.Services.GetRequiredService<DistributedApplicationModel>();
-        var surrealDbResource = appModel.Resources.OfType<ContainerResource>()
-            .FirstOrDefault(r => r.Name == "surrealdb");
+        _app = await builder.BuildAsync();
+        await _app.StartAsync();
 
-        if (surrealDbResource == null)
-        {
-            throw new InvalidOperationException(
-                "Failed to find surrealdb resource in Aspire application. " +
-                "Ensure AppHost project defines the SurrealDB container.");
-        }
-
-        // Get the endpoint for SurrealDB
-        var endpoint = surrealDbResource.Annotations
-            .OfType<EndpointAnnotation>()
-            .FirstOrDefault(e => e.Scheme == "http");
-
-        if (endpoint == null)
-        {
-            throw new InvalidOperationException("SurrealDB HTTP endpoint not found in Aspire configuration.");
-        }
-
-        var connectionString = $"surreal://localhost:{endpoint.Port}";
+        // Get endpoint via Aspire testing extension
+        var endpoint = _app.GetEndpoint("surrealdb", "http");
+        var connectionString = $"surreal://{endpoint.Host}:{endpoint.Port}";
 
         // Initialize client
         var options = new SurrealDbClientOptions
@@ -72,7 +57,7 @@ public class SurrealDbClientIntegrationTests : IAsyncLifetime
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Failed to connect to SurrealDB. Ensure Aspire AppHost is properly configured.",
+                "Failed to connect to SurrealDB. Ensure Aspire AppHost is properly configured.",
                 ex);
         }
     }
@@ -94,6 +79,7 @@ public class SurrealDbClientIntegrationTests : IAsyncLifetime
         if (_app != null)
         {
             await _app.StopAsync();
+            await _app.DisposeAsync();
         }
     }
 
@@ -130,8 +116,7 @@ public class SurrealDbClientIntegrationTests : IAsyncLifetime
         Assert.True(allUsers.Any(u => u.Name == "Updated Name"));
 
         // Act & Assert: DELETE
-        var deleted = await _client.DeleteAsync(createdId);
-        Assert.True(deleted);
+        await _client.DeleteAsync(createdId);
 
         // Verify deletion
         var afterDelete = await _client.GetAsync<TestUser>(createdId);
@@ -215,10 +200,9 @@ public class SurrealDbClientIntegrationTests : IAsyncLifetime
 
         // Arrange
         var table = "transactions";
-        var item = new TestItem { Description = "Transaction Test" };
 
         // Act
-        using var txn = await _client!.BeginTransactionAsync();
+        await using var txn = await _client!.BeginTransactionAsync();
         var result = await txn.QueryAsync<TestItem>($"CREATE {table} CONTENT {{\"Description\":\"Transaction Test\"}} RETURN AFTER;");
         await txn.CommitAsync();
 

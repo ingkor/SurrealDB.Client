@@ -29,11 +29,8 @@ internal class HttpProtocolAdapter : IProtocolAdapter
 
         try
         {
-            // Verify connection with a simple query
-            var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_baseUri, "query"))
-            {
-                Content = new StringContent("PING", Encoding.UTF8, "application/json")
-            };
+            // Verify connection with the health endpoint (no auth required)
+            var request = new HttpRequestMessage(HttpMethod.Get, new Uri(_baseUri, "health"));
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(_options.ConnectionTimeout);
@@ -95,31 +92,87 @@ internal class HttpProtocolAdapter : IProtocolAdapter
 
         try
         {
-            var httpMethod = GetHttpMethod(method);
-            var requestUri = new Uri(_baseUri, path);
+            // Handle special RPC methods
+            if (method == "use")
+            {
+                // "use" is a no-op for HTTP (uses NS/DB headers instead)
+                return "{}";
+            }
 
-            var request = new HttpRequestMessage(httpMethod, requestUri);
+            if (method == "query")
+            {
+                // For "query" method, extract SQL from JSON body and POST as plain text to /sql
+                string? sqlQuery = null;
+                if (!string.IsNullOrEmpty(body))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(body);
+                        if (doc.RootElement.TryGetProperty("query", out var queryElement))
+                        {
+                            sqlQuery = queryElement.GetString();
+                        }
+                    }
+                    catch
+                    {
+                        // If body parsing fails, POST body as-is
+                        sqlQuery = null;
+                    }
+                }
+
+                var requestUri = new Uri(_baseUri, path);
+                var request = new HttpRequestMessage(HttpMethod.Post, requestUri);
+
+                if (!string.IsNullOrEmpty(sqlQuery))
+                {
+                    request.Content = new StringContent(sqlQuery, Encoding.UTF8, "text/plain");
+                }
+                else if (!string.IsNullOrEmpty(body))
+                {
+                    request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                }
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(_options.CommandTimeout);
+
+                var response = await _httpClient.SendAsync(request, cts.Token);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                    var sanitizedMessage = SanitizeErrorMessage(errorContent, response.StatusCode);
+                    throw new QueryException(sanitizedMessage);
+                }
+
+                return await response.Content.ReadAsStringAsync(cts.Token);
+            }
+
+            // For other methods, use GetHttpMethod
+            var httpMethod = GetHttpMethod(method);
+            var uri = new Uri(_baseUri, path);
+
+            var req = new HttpRequestMessage(httpMethod, uri);
 
             if (!string.IsNullOrEmpty(body))
             {
-                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                req.Content = new StringContent(body, Encoding.UTF8, "application/json");
             }
 
             // Apply timeout
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(_options.CommandTimeout);
+            using var cts2 = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts2.CancelAfter(_options.CommandTimeout);
 
-            var response = await _httpClient.SendAsync(request, cts.Token);
+            var resp = await _httpClient.SendAsync(req, cts2.Token);
 
-            if (!response.IsSuccessStatusCode)
+            if (!resp.IsSuccessStatusCode)
             {
-                var errorContent = await response.Content.ReadAsStringAsync(cts.Token);
+                var errorContent = await resp.Content.ReadAsStringAsync(cts2.Token);
                 // SECURITY: Sanitize error message to prevent information disclosure
-                var sanitizedMessage = SanitizeErrorMessage(errorContent, response.StatusCode);
+                var sanitizedMessage = SanitizeErrorMessage(errorContent, resp.StatusCode);
                 throw new QueryException(sanitizedMessage);
             }
 
-            return await response.Content.ReadAsStringAsync(cts.Token);
+            return await resp.Content.ReadAsStringAsync(cts2.Token);
         }
         catch (OperationCanceledException)
         {

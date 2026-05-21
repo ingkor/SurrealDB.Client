@@ -3,7 +3,7 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 var surrealdb = builder.AddContainer("surrealdb", "surrealdb/surrealdb", "latest")
-    .WithArgs("start", "--auth", "--user", "admin", "--pass", "password", "memory")
+    .WithArgs("start", "--user", "admin", "--pass", "password", "memory")
     .WithHttpEndpoint(port: 8000, targetPort: 8000, name: "http");
 
 builder.AddProject("sample-api", "SurrealDB.Client.Sample.Api/SurrealDB.Client.Sample.Api.csproj")

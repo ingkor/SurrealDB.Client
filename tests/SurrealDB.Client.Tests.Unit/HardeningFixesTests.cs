@@ -279,7 +279,7 @@ public class HardeningFixesTests
 
         // Assert
         Assert.NotNull(queryConstant);
-        Assert.Equal("QUERY", queryConstant.GetValue(null));
+        Assert.Equal("query", queryConstant.GetValue(null));
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public class HardeningFixesTests
 
         // Assert
         Assert.NotNull(queryConstant);
-        Assert.Equal("QUERY", queryConstant.GetValue(null));
+        Assert.Equal("query", queryConstant.GetValue(null));
     }
 
     [Fact]
@@ -366,7 +366,7 @@ public class HardeningFixesTests
     }
 
     [Theory]
-    [InlineData("QUERY", "Query")]
+    [InlineData("query", "Query")]
     [InlineData("signin", "SignIn")]
     [InlineData("ping", "Ping")]
     public void F10_ProtocolMethods_AllConstantsHaveCorrectValues(string expectedValue, string constantName)

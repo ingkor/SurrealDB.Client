@@ -58,6 +58,12 @@ internal static class ProtocolAdapterFactory
         var httpClient = new HttpClient(httpClientHandler, disposeHandler: true);
         httpClient.Timeout = options.CommandTimeout;
 
+        // Add NS/DB headers for SurrealDB HTTP API
+        if (!string.IsNullOrEmpty(options.Namespace))
+            httpClient.DefaultRequestHeaders.Add("surreal-ns", options.Namespace);
+        if (!string.IsNullOrEmpty(options.Database))
+            httpClient.DefaultRequestHeaders.Add("surreal-db", options.Database);
+
         return new HttpProtocolAdapter(uri, httpClient, options);
     }
 

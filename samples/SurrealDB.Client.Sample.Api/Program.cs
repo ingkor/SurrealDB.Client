@@ -1,6 +1,7 @@
 using Scalar.AspNetCore;
 using SurrealDB.Client;
 using SurrealDB.Client.EventSourcing;
+using SurrealDB.Client.Sample.Api.Data;
 using SurrealDB.Client.Sample.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,7 +11,7 @@ builder.AddServiceDefaults();
 // ── SurrealDB connection ──────────────────────────────────────────────────────
 // Aspire injects: services__surrealdb__http__0 = http://host:port
 // Fallback: localhost:8000 for standalone runs
-var aspireEndpoint = builder.Configuration["services__surrealdb__http__0"];
+var aspireEndpoint = builder.Configuration["services:surrealdb:http:0"];
 string connectionString;
 
 if (!string.IsNullOrEmpty(aspireEndpoint))
@@ -32,7 +33,10 @@ var surrealOptions = new SurrealDbClientOptions
     VerifyServerCertificate = false,
     AcknowledgeCertificateValidationRisk = true,   // local dev only
     ConnectionTimeout = TimeSpan.FromSeconds(10),
-    CommandTimeout = TimeSpan.FromSeconds(30)
+    CommandTimeout = TimeSpan.FromSeconds(30),
+    LoggerFactory = LoggerFactory.Create(b => b.AddConsole()),
+    CacheMaxItems = 100,
+    BatchThreshold = 5
 };
 
 // Register SurrealDB client as singleton (shared connection pool)
@@ -42,6 +46,7 @@ builder.Services.AddSingleton<ISurrealDbClient>(_ => new SurrealDbClient(surreal
 // Register InMemoryEventStore as singleton so the SSE stream and publish
 // endpoints share the same store instance
 builder.Services.AddSingleton<IEventStore, InMemoryEventStore>();
+builder.Services.AddHttpClient();
 
 // ── OpenAPI / Scalar ──────────────────────────────────────────────────────────
 builder.Services.AddOpenApi(options =>
@@ -55,7 +60,8 @@ builder.Services.AddOpenApi(options =>
             "Each endpoint demonstrates a specific library feature — " +
             "CRUD, Session/ChangeTracker, IQueryable, Authentication, " +
             "Transactions, Interceptors, Plugins, Caching, Concurrency, " +
-            "Event Sourcing, and Server-Sent Events.";
+            "Event Sourcing, SSE, Batch Operations, Resilience, " +
+            "Observability, Audit Attributes, Health Checks, and Migrations.";
         return Task.CompletedTask;
     });
 });
@@ -82,6 +88,7 @@ try
     await client.ConnectAsync();
     await client.AuthenticateAsync("admin", "password");
     logger.LogInformation("Connected to SurrealDB at {ConnectionString}", connectionString);
+    await DataSeeder.SeedAsync(client, logger);
 }
 catch (Exception ex)
 {
@@ -99,6 +106,13 @@ app.MapUserEndpoints();           // Auth: AuthenticateAsync, LogoutAsync
 app.MapQueryEndpoints();          // Query: raw QueryAsync, typed QueryAsync<T>, BeginTransactionAsync, SurrealQueryCompiler
 app.MapDemoEndpoints();           // Enterprise: Interceptors, Plugins, Cache, ConcurrencyToken, EventSourcing
 app.MapEventStreamEndpoints();    // SSE: InMemoryEventStore stream + replay
+app.MapBatchEndpoints();          // Batch: CreateManyAsync, UpdateManyAsync, DeleteManyAsync
+app.MapResilienceEndpoints();     // Resilience: retry/circuit-breaker config + test
+app.MapObservabilityEndpoints();  // Observability: ActivitySource, Meter, ILogger config
+app.MapAuditEndpoints();          // Audit: [CreatedAt], [UpdatedAt], [CreatedBy], [UpdatedBy]
+app.MapHealthEndpoints();         // Health: IsConnectedAsync, cache stats, timeouts
+app.MapMigrationEndpoints();      // Migrations: MigrateAsync, RollbackAsync
+app.MapTestEndpoints();           // Test: POST /api/test/run-all (calls all endpoints)
 
 // Root redirect to Scalar UI
 app.MapGet("/", () => Results.Redirect("/scalar/v1")).ExcludeFromDescription();

@@ -7,8 +7,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 // Starts in-memory mode with root credentials on port 8000
 var surrealdb = builder
     .AddContainer("surrealdb", "surrealdb/surrealdb", "latest")
-    .WithArgs("start", "--auth", "--user", "admin", "--pass", "password", "memory")
-    .WithEnvironment("SURREAL_AUTH", "true")
+    .WithArgs("start", "--user", "admin", "--pass", "password", "memory")
     .WithEnvironment("SURREAL_USER", "admin")
     .WithEnvironment("SURREAL_PASS", "password")
     .WithHttpEndpoint(port: 8000, targetPort: 8000, name: "http");

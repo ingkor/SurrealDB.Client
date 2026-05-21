@@ -12,7 +12,7 @@ using Exceptions;
 /// </summary>
 internal static class ProtocolMethods
 {
-    public const string Query = "QUERY";
+    public const string Query = "query";
     public const string SignIn = "signin";
     public const string Ping = "ping";
 }
@@ -65,7 +65,8 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
 
             var wsUri = new UriBuilder(_baseUri)
             {
-                Scheme = _baseUri.Scheme == "https" || _options.UseHttps ? "wss" : "ws"
+                Scheme = _baseUri.Scheme == "https" || _options.UseHttps ? "wss" : "ws",
+                Path = "/rpc"
             }.Uri;
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -141,10 +142,23 @@ internal class WebSocketProtocolAdapter : IProtocolAdapter
                 }
             }
 
-            // For WebSocket, we'll send as a JSON-RPC style message
+            // For WebSocket, we'll send as a SurrealDB JSON-RPC message
             var requestId = Interlocked.Increment(ref _requestId);
-            // F1 Fix: Use JsonSerializer.Serialize to prevent JSON injection
-            var message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(method)},\"path\":{JsonSerializer.Serialize(path)},\"params\":{body ?? "{}"}}}";
+            // SurrealDB RPC expects: {"id":N,"method":"query","params":["SQL statement"]}
+            // The HTTP adapter uses 'path' as URL path (e.g. "/sql") and 'body' as JSON payload.
+            // For WebSocket RPC, we need to extract the actual SQL from the body JSON.
+            string message;
+            if (method == ProtocolMethods.Query && body != null)
+            {
+                // Extract SQL from body: {"query":"SELECT ..."} → "SELECT ..."
+                using var doc = JsonDocument.Parse(body);
+                var sql = doc.RootElement.GetProperty("query").GetString()!;
+                message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(method)},\"params\":[{JsonSerializer.Serialize(sql)}]}}";
+            }
+            else if (body != null)
+                message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(method)},\"params\":[{JsonSerializer.Serialize(path)},{body}]}}";
+            else
+                message = $"{{\"id\":{requestId},\"method\":{JsonSerializer.Serialize(method)},\"params\":[{JsonSerializer.Serialize(path)}]}}";
 
             var messageBytes = Encoding.UTF8.GetBytes(message);
 

@@ -30,7 +30,7 @@ public class SurrealDbClient : ISurrealDbClient
     /// </summary>
     private static class ProtocolMethods
     {
-        public const string Query = "QUERY";
+        public const string Query = "query";
         public const string SignIn = "signin";
         public const string Ping = "ping";
     }
@@ -160,10 +160,11 @@ public class SurrealDbClient : ISurrealDbClient
                 // Verify connection
                 await _currentConnection.ConnectAsync(cancellationToken);
 
-                // Set namespace and database for this connection
-                // F10 Fix: Use constant for QUERY method
-                var useNsDbStatement = $"USE NS {EscapeIdentifier(_options.Namespace)} DB {EscapeIdentifier(_options.Database)};";
-                var response = await _currentConnection.SendAsync(ProtocolMethods.Query, useNsDbStatement, null, cancellationToken);
+                // Set namespace and database using the SurrealDB 'use' RPC method
+                // params: ["namespace", "database"]
+                var nsJson = System.Text.Json.JsonSerializer.Serialize(_options.Namespace);
+                var dbJson = System.Text.Json.JsonSerializer.Serialize(_options.Database);
+                var response = await _currentConnection.SendAsync("use", _options.Namespace!, dbJson, cancellationToken);
 
                 if (string.IsNullOrEmpty(response))
                     throw new ConnectionException("Failed to set namespace and database: empty response");
@@ -494,7 +495,7 @@ public class SurrealDbClient : ISurrealDbClient
             {
                 var json = _serializer.Serialize(data);
                 var query = $"CREATE {table} CONTENT {json} RETURN AFTER;";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
 
                 var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
                 envelope?.EnsureSuccess();
@@ -549,7 +550,7 @@ public class SurrealDbClient : ISurrealDbClient
             try
             {
                 var query = $"SELECT * FROM {recordId};";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
 
                 var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
                 envelope?.EnsureSuccess();
@@ -575,7 +576,7 @@ public class SurrealDbClient : ISurrealDbClient
             try
             {
                 var query = $"SELECT * FROM {table} LIMIT {limit};";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
 
                 var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
                 envelope?.EnsureSuccess();
@@ -612,7 +613,7 @@ public class SurrealDbClient : ISurrealDbClient
             {
                 var json = _serializer.Serialize(data);
                 var query = $"UPDATE {recordId} CONTENT {json} RETURN AFTER;";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
 
                 var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
                 envelope?.EnsureSuccess();
@@ -638,7 +639,7 @@ public class SurrealDbClient : ISurrealDbClient
             try
             {
                 var query = $"DELETE {recordId};";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
                 var envelope = _serializer.Deserialize<SurrealDbResponse<object>>(response);
                 envelope?.EnsureSuccess();
             }
@@ -667,7 +668,7 @@ public class SurrealDbClient : ISurrealDbClient
             {
                 var json = _serializer.Serialize(data);
                 var query = $"UPSERT {recordId} CONTENT {json} RETURN AFTER;";
-                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":\"{query}\"}}", ct).ConfigureAwait(false);
+                var response = await _currentConnection.SendAsync("query", "/sql", $"{{\"query\":{System.Text.Json.JsonSerializer.Serialize(query)}}}", ct).ConfigureAwait(false);
 
                 var envelope = _serializer.Deserialize<SurrealDbResponse<T>>(response);
                 envelope?.EnsureSuccess();

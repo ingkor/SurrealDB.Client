@@ -73,13 +73,15 @@ public class BasicAuthenticationProvider : IAuthenticationProvider, IDisposable
                 var jsonDoc = System.Text.Json.JsonDocument.Parse(response);
                 var root = jsonDoc.RootElement;
 
-                // Response should contain a token
-                if (!root.TryGetProperty("token", out var tokenElement))
-                    throw new AuthenticationException("No token in authentication response.");
+                // SurrealDB RPC returns token in "result" field, HTTP returns in "token" field
+                string? token = null;
+                if (root.TryGetProperty("result", out var resultElement) && resultElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    token = resultElement.GetString();
+                else if (root.TryGetProperty("token", out var tokenElement))
+                    token = tokenElement.GetString();
 
-                var token = tokenElement.GetString();
                 if (string.IsNullOrEmpty(token))
-                    throw new AuthenticationException("Empty token in authentication response.");
+                    throw new AuthenticationException("No token in authentication response.");
             }
             catch (System.Text.Json.JsonException ex)
             {

@@ -85,11 +85,11 @@ public class SurrealDbClientTests
         mockAdapter.Setup(a => a.IsConnected).Returns(true);
         mockAdapter.Setup(a => a.ConnectAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         mockAdapter.Setup(a => a.SendAsync(
-            It.Is<string>(m => m == "QUERY"),
-            It.Is<string>(p => p.Contains("USE NS") && p.Contains("USE DB")),
-            null,
+            It.Is<string>(m => m == "use"),
+            It.IsAny<string>(),
+            It.IsAny<string>(),
             It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"status\": \"ok\"}");
+            .ReturnsAsync("{\"result\":null}");
 
         var client = new SurrealDbClient(options);
 

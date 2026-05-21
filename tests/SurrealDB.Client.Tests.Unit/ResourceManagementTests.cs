@@ -61,7 +61,7 @@ public class ResourceManagementTests
             connection = await mockConnectionPool.Object.AcquireAsync();
             try
             {
-                await mockAdapter.Object.SendAsync("QUERY", "USE NS test DB test;", null, default);
+                await mockAdapter.Object.SendAsync("query", "USE NS test DB test;", null, default);
             }
             catch
             {
